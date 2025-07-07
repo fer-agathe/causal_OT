@@ -4,10 +4,15 @@ library(dichromat)
 library(fairadapt)
 library(expm)
 library(cluster)
+#devtools::install_github("fer-agathe/transport-simplex")
 library(transportsimplex)
 library(ggtern)
 library(randomForest)
 library(grf)
+remotes::install_github(
+  repo = "fer-agathe/sequential_transport", subdir = "seqtransfairness"
+)
+library(seqtransfairness)
 
 source("functions.R")
 source("utils.R")
@@ -145,7 +150,7 @@ adj <- matrix(
 )
 
 causal_graph <- fairadapt::graphModel(adj)
-# plot(causal_graph)
+plot(causal_graph)
 
 
 # data <- D_SXY

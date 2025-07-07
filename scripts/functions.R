@@ -1,6 +1,6 @@
 #' Compute counterfactual predicted probabilities for a single observation
 #'
-#' @param i Index of the observation from group °
+#' @param i Index of the observation from group 0.
 #' @param pred_probs_0 Matrix of predicted probabilities (group 0).
 #' @param pred_probs_1 Matrix of predicted probabilities (group 1).
 #' @param weights_0 Matrix of intra-group distances for group 0.
@@ -154,7 +154,7 @@ get_assignment <- function(probs,
   
   # Assign each source point to the target it contributes the most mass to
   assignments <- max.col(mass_matrix, ties.method = "random")
-  factor(c(1, 2, 4), levels = 1:4, labels = c("A", "B", "C", "D"))
+  #factor(c(1, 2, 4), levels = 1:4, labels = c("A", "B", "C", "D"))
   
   factor(assignments, levels = 1:length(labels), labels = labels)
 }
@@ -571,11 +571,11 @@ seq_trans <- function(data,
 #' the cost function for optimal transport on the unit simplex as the distance
 #' metric.
 #'
-#' @param X Matrice of observations (one observation per row).
-#' @param Y Matrice of observations (one observation per row).
+#' @param X Matrix of observations (one observation per row).
+#' @param Y Matrix of observations (one observation per row).
 #'
-#' @returns A matrix of size m x n, where m is the number of observation in X,
-#'  and n is the number of observations in X, containing the distances between
+#' @returns A matrix of size n x m, where n is the number of observation in X,
+#'  and m is the number of observations in Y, containing the distances between
 #'  observations in X and Y.
 #' @noRd
 compute_pdist_simplex_fast <- function(X, Y) {
