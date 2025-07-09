@@ -208,11 +208,11 @@ tb_att_2 |> group_by(x_1) |> summarise(ATT = mean(diff))
 ```
 
 
-## Matching Based on Euclidean Distances
+## Matching Using the Euclidean Distances Cost Matrix {#sec-matching-euclidean}
 
-Let us now perform optimal matching, based on the distances between the individuals from the two groups. We use the Euclidean distance between the centered log ratio (clr) transform of the probabilities of being in the three classes.
+Let us nw perform optimal matching between individuals from the two groups using Euclidean distances. These distances are computed in the space of centered log-ratio (clr) transformed probability vectors associated with each individual's membership in one of the classes.
 
-Let us first extract the probabilities only and compute the clr transform of the compositional data.
+Let us first extract the probability vectors ($p_A, p_B, p_C$) from both groups and apply the clr transformation to make them suitable for Euclidean geometry in the compositional space.
 ```{r define-all_coords}
 #| message: false
 #| warning: false
@@ -224,7 +224,7 @@ all_coords <- rbind(
   clr()
 ```
 
-Then, we can compute the Euclidean distances between each individual and focus on the distances between individuals from one group to the other.
+Then, we can compute the pairwise Euclidean distances between individuals in group 1 and those in group 0, based on their clr-transformed probability vectors.
 ```{r}
 row.names(all_coords) <- c(group_0$i, group_1$i)
 # Euclidean distances between the clr transform of the propensities
@@ -234,40 +234,36 @@ n1 <- nrow(group_1)
 between_distances <- D[(n0 + 1):(n0 + n1), 1:n0]
 round(between_distances, 2)
 ```
-We can then use these distances as the costs to find an optimal mapping from group 1 to group 0. In a nutshell, we want to find an optimal matching between  $\{\boldsymbol{p}_{1,1},\cdots,\boldsymbol{p}_{1,n_1}\}$ and $\{\boldsymbol{p}_{0,1},\cdots,\boldsymbol{p}_{0,n_0}\}$. The probabilities are associated, respectively, with weights $\boldsymbol{w}_1=(w_{11},\cdots,w_{1n_1})$, and $\boldsymbol{w}_0=(w_{01},\cdots,w_{0n_0})$. 
-
-To do so, we need to solve the following linear system:
+We aim to find the optimal matching between the individuals in group 1 and group 0 based on these distances. Formally, we want to solve the following optimal transport problem:
 $$
 \min_{P\in\mathcal{U}(\boldsymbol{1}_{n_1},\boldsymbol{1}_{n_0})}
-\langle P,\,C\rangle,\text{ where }\langle P,\,C\rangle
-=\sum_{i=1}^{n_1}\sum_{j=1}^{n_0}P_{ij}\,C_{ij},
+\langle P,\,C\rangle,
 $$
-where $\mathcal{U}(\boldsymbol{w}_1,\boldsymbol{w}_0)$ is defined as
-$$
-\bigl\{\,P\in\mathbb{R}_+^{n_1\times n_0}:
-P\,\mathbf{1}_{n_0}=\boldsymbol{w}_1,\ 
-P^\top\mathbf{1}_{n_1}=\boldsymbol{w}_0
-\bigr\},
-$$
-and where 
-$$
-C:=[C_{i,j}]\text{ where }C_{i,j}=c(\boldsymbol{p}_{1,i},\boldsymbol{p}_{0,j})
-$$
-is the "Dirichlet transport" (@baxendale2022random) and where the cost function is the cross-entropy:
-based on the cross-entropy,
-$$
-\begin{equation*}
- c(\mathbf{x},\mathbf{y})=\log\left(\frac{1}{d}\sum_{i=1}^d\frac{y_i}{x_i}\right)-\frac{1}{d}\sum_{i=1}^d\log\left(\frac{y_i}{x_i}\right),
-\end{equation*}
-$$
-
-Here, we consider that $\mathcal{U}(\boldsymbol{1}_{n_1},\boldsymbol{1}_{n_0})$ is the polytope
+where $C:=[C_{i,j}]$ is the cost matrix, with $C_{ij}$ measuring the cost of matching individual $i$ from group 1 to individual $j$ from group 0. Here, we use the Euclidean distance that we juste computed. The total cost is given by $\langle P, C\rangle=\sum_{i=1}^{n_1}\sum_{j=1}^{n_0}P_{ij}\,C_{ij}$. The set of admissible transport plans is defined as follows:
 $$
 \left\{\,P\in\mathbb{R}_+^{n_1\times n_0}:
 P\,\mathbf{1}_{n_0}=\frac{\mathbf{1}_{n_1}}{n_1},\ 
 P^\top\mathbf{1}_{n_1}=\frac{\mathbf{1}_{n_0}}{n_0}
 \right\}.
 $$
+We thus have a uniform mass distribution across both groups.
+
+:::{.callout-note}
+
+### Note
+
+An alternative cost function (which is not used here) is the cross-entropy between two compositional vectors:
+$$
+\begin{equation*}
+ c(\mathbf{x},\mathbf{y})=\log\left(\frac{1}{d}\sum_{i=1}^d\frac{y_i}{x_i}\right)-\frac{1}{d}\sum_{i=1}^d\log\left(\frac{y_i}{x_i}\right),
+\end{equation*}.
+$$
+This corresponds to the "Dirichlet transport" (@baxendale2022random). This alternative is considered below, in @sec-matching-ce.
+
+:::
+
+We solve the optimal transport problem using the `transport()`{.R} function from the {transport} package. This function computes the optimal matching plan based on the cost matrix.
+
 
 
 ```{r define-ot_plan}
@@ -380,3 +376,71 @@ And if we compute the ATT by category of $X$:
 ot_plan_diff |> group_by(x_1) |> summarise(ATT = mean(diff))
 ```
 
+
+## Matching Using the Cross-Entropy Cost Matrix {#sec-matching-ce}
+
+In @sec-matching-euclidean, we used the Euclidean distance of the clr-transformed vector of probabilities as the cost function to solve the optimal transport problem. Here, we consider an alternative cost function, the cross-entreopy:
+$$
+c(\mathbf{x}, \mathbf{y}) = \log\left(\frac{1}{d} \sum_{i=1}^d \frac{y_i}{x_i}\right) - \frac{1}{d} \sum_{i=1}^d \log\left(\frac{y_i}{x_i}\right).
+$$
+
+We first extract the probability vectors for the individuals from both groups (without clr transform), and we make sure there is no probability equal to 0.
+```{r define-p0}
+p0 <- as.matrix(group_0[, c("p_A", "p_B", "p_C")])
+p1 <- as.matrix(group_1[, c("p_A", "p_B", "p_C")])
+p0 <- pmax(p0, 1e-10)
+p1 <- pmax(p1, 1e-10)
+```
+
+Let us define the cross-entropy cost function:
+```{r define-cross_entropy_cost}
+cross_entropy_cost <- function(x, y) {
+  d <- length(x)
+  log(mean(y / x)) - mean(log(y / x))
+}
+```
+
+We can then compute the pairwise cost matrix (group1 rows vs group0 columns).
+
+```{r}
+between_distances_ce <- outer(
+  1:nrow(p1), 1:nrow(p0),
+  Vectorize(function(i, j) cross_entropy_cost(p1[i, ], p0[j, ]))
+)
+round(between_distances_ce, 4)
+```
+Then, we can solde the optimal transport problem.
+```{r ot-ce}
+ot_plan_ce <- transport::transport(
+  a = mass_source,
+  b = mass_target,
+  costm = between_distances_ce,
+  method = "networkflow"
+)
+ot_plan_ce$i_0 <- group_0$i[ot_plan_ce$to]
+ot_plan_ce$i_1 <- group_1$i[ot_plan_ce$from]
+ot_plan_ce
+```
+
+We can compute the differences $y(1)-y(0)$ for each matched individuals.
+
+```{r define-ot_plan_ce_diff}
+ot_plan_ce_diff <- 
+  ot_plan_ce |> 
+  left_join(group_0 |> select(i_0 = i, y_0 = y, x_0 = x), by = "i_0") |> 
+  left_join(group_1 |> select(i_1 = i, y_1 = y, x_1 = x), by = "i_1") |> 
+  mutate(diff = y_1 - y_0) |>
+  select(i_0, i_1, diff, x_0, x_1)
+ot_plan_ce_diff
+```
+
+
+Resulting in an ATT of:
+```{r show-att-ot-ce}
+mean(ot_plan_ce_diff$diff)
+```
+
+And if we compute the ATT by category of $X$:
+```{r show-att-ot-ce-groups}
+ot_plan_ce_diff |> group_by(x_1) |> summarise(ATT = mean(diff))
+```
