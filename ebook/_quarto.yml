@@ -1,0 +1,49 @@
+project:
+  type: book
+  output-dir: ../docs
+
+
+book:
+  title: "Causal Inference with Counterfactuals and Optimal Transport"
+  date: "07/07/2025"
+  chapters:
+    - index.qmd
+    - part: I. Introduction
+      chapters:
+        - gaussian-example.qmd
+    - part: II. Sequential Transport for General Data
+      chapters:
+        - transp-categ.qmd
+        - barycentric.qmd
+        - transport-categ-toy.qmd
+    - references.qmd
+  navbar:
+    right:
+      - icon: github
+        href: https://github.com/fer-agathe/causal_OT
+        aria-label: GitHub
+
+
+bibliography: ./references.bib
+
+
+fig-cap-location: top
+
+
+format:
+  html:
+    theme:
+      light: [litera, styles-light.scss]
+      dark: [darkly, styles-dark.scss]
+    html-math-method: mathjax
+    include-in-header:
+    - file: mathjax-color.html
+
+
+
+
+filters:
+  - pseudocode
+
+
+editor: source

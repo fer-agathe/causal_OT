@@ -1,0 +1,8 @@
+# Preface
+
+<!-- Do not forget to install pseudocode extension: `quarto add leovan/quarto-pseudocode` -->
+
+
+This ebook contains the codes and explanations of codes used to produce the results of our paper titled *Causal Inference with Counterfactuals and Optimal Transport*.
+
+[TBD]

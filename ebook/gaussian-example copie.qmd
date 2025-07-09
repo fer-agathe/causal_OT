@@ -1,0 +1,790 @@
+# Gaussian Example
+
+
+:::{.callout-note}
+
+## Objectives
+
+In this page, XXX
+
+
+
+:::
+
+```{r package-settings}
+#| warning: false
+#| message: false
+library(tidyverse)
+library(mnormt)
+```
+
+```{r}
+#| warning: false
+#| message: false
+#| code-fold: true
+#| code-summary: Codes for graphical parameters
+library(extrafont, quietly = TRUE)
+col_group <- c("#1b95e0","#7F170E")
+colGpe1 <- col_group[2]
+colGpe0 <- col_group[1]
+loadfonts(device = "pdf", quiet = TRUE)
+font_size <- 20
+font_family <- "CMU Serif"
+
+path <- "./figs/"
+if (!dir.exists(path)) dir.create(path)
+
+theme_paper <- function(...) {
+  font_size <- 20
+  theme(
+    text = element_text(family = font_family, size = unit(font_size, "pt")),
+    plot.background = element_rect(fill = "transparent"),
+    legend.key = element_blank(),
+    panel.spacing = unit(1, "lines"),
+    panel.background = element_rect(fill = NA, colour = "black"),
+    panel.grid.major = element_line(colour = "grey80"),
+    plot.title = element_text(hjust = 0, size = rel(1.3), face = "bold"),
+    plot.title.position = "plot",
+    strip.background = element_rect(fill = NA, colour = NA)
+  )
+}
+```
+
+
+
+```{r}
+#| echo: false
+#| eval: true
+#| message: false
+#| warning: false
+#| file: _myfunctions.R
+```
+
+$$
+\definecolor{wongBlack}{RGB}{0,0,0}
+\definecolor{wongGold}{RGB}{230, 159, 0}
+\definecolor{wongLightBlue}{RGB}{86, 180, 233}
+\definecolor{wongGreen}{RGB}{0, 158, 115}
+\definecolor{wongYellow}{RGB}{240, 228, 66}
+\definecolor{wongBlue}{RGB}{0, 114, 178}
+\definecolor{wongOrange}{RGB}{213, 94, 0}
+\definecolor{wongPurple}{RGB}{204, 121, 167}
+\definecolor{colA}{RGB}{255, 221, 85}
+\definecolor{colB}{RGB}{148, 78, 223}
+\definecolor{colC}{RGB}{63, 179, 178}
+\definecolor{colGpe1}{RGB}{127, 23, 14}
+\definecolor{colGpe0}{RGB}{27, 149, 224}
+$$
+
+## Data Generating Process
+
+We want to simulate potential outcomes in a binary treatment setting, with covariate shift between treatment groups.
+
+Let $n=500$ denote the number of individuals (or unit), and let $\boldsymbol{X}=(X_1,X_2)$ be drawn from bivariate normal distrubtions whose mean vectors and covariance matrices depend on the treatment assignment $A\in\{0,1\}$. 
+
+For `r colorize("untreated individuals", colGpe0)` ($A=\color{colGpe0}0$) the covariates $\boldsymbol{X}^{(0)} = (X_1^{(0)}, X_2^{(0)})$ are sampled from a $\mathcal{N}(a \times \mu_0, \Sigma_0)$, where $\mu_0 = -1$, $\Sigma_0 = \begin{pmatrix} 1 & r_0 \\ r_0 & 1 \end{pmatrix}$ with $r_0 = 0.7$, and $a$ is a parameter that can be used to make the mean shift. We set $a=1$ for now.
+
+For `r colorize("treated individuals", colGpe1)` ($A=\color{colGpe1}1$), covariates $\boldsymbol{X}^{(1)} = (X_1^{(1)}, X_2^{(1)})$ follow a $\mathcal{N}(a \cdot \mu_1, \Sigma_1)$, where $\mu_1 = +1$, $\Sigma_1 = \begin{pmatrix} 1 & r_1 \\ r_1 & 1 \end{pmatrix}$ with $r_1 = -0.5$. 
+
+
+The treatment assignment $A$ is randomized with probability $p_1 = 0.5$.
+
+The potential outcomes are linear functions of the covariates: 
+$$
+\begin{aligned}
+Y(0) &= a_1 X^{(0)}_1 + a_2 X^{(0)}_2 + \varepsilon,\\
+Y(1) &= a_1 X^{(1)}_1 + a_2 X^{(1)}_2 + a_0 + \varepsilon .
+\end{aligned}
+$$
+
+where $\varepsilon \sim \mathcal{N}(0, 1)$ and $a_0 = 3$, $a_1 = 2$, $a_2 = -1.5$. 
+
+The observed outcome is 
+$$Y = A \cdot Y(1) + (1 - A) \cdot Y(0).$$ 
+
+Note that in this setup, we have a covariate shift across treatment groups.
+
+We will focus on the average treatment effect of the treated:
+$$
+\begin{aligned}
+\text{ATT}
+&= \mathbb{E}\!\bigl[Y(1)-Y(0)\mid A=1\bigr] \\[4pt]
+&= a_0
+   + a_1 \mathbb{E}\!\bigl[X^{(1)}_1 - X^{(0)}_1\bigr]
+   + a_2 \mathbb{E}\!\bigl[X^{(1)}_2 - X^{(0)}_2\bigr] \\
+&= 3 + 4 - 3 \\[4pt]
+&= 4.
+\end{aligned}
+$$
+
+```{r}
+set.seed(12345)
+# Parameters
+n <- 500
+mu0 <- -1
+mu1 <- +1
+r0 <- +.7
+r1 <- -.5
+a <- 1
+a0 <-  3
+a1 <-  2
+a2 <-  -1.5
+p1 <- .5
+Mu0 <- rep(mu0, 2)
+Mu1 <- rep(mu1, 2)
+Sig0 <- matrix(c(1, r0, r0, 1), 2, 2)
+Sig1 <- matrix(c(1, r1, r1, 1), 2, 2)
+
+# Draw covariates
+X0 <- rmnorm(n, mean = a * Mu0, varcov = Sig0)
+X1 <- rmnorm(n, mean = a * Mu1, varcov = Sig1)
+# Random noise
+E <- rnorm(n)
+# Binary treatment
+A <- sample(0:1, size = n, replace = TRUE, prob = c(1 - p1, p1))
+
+df <- tibble(
+  X1_0 = X0[, 1],
+  X2_0 = X0[, 2],
+  X1_1 = X1[, 1],
+  X2_1 = X1[, 2],
+  X1 = A * X1_1 + (1-A) * X1_0,
+  X2 = A * X2_1 + (1-A) * X2_0,
+  A = A,
+  Y0 = a1 * X1_0 + a2 * X2_0 + E,
+  Y1 = a1 * X1_1 + a2 * X2_1 + a0 + E,
+  Y = A * Y1 + (1-A) * Y0
+)
+```
+
+
+:::{.callout-tip collapse=true icon=false}
+
+### Monte-Carlo Simulations to Compute the ATT
+
+We generate a dataset using the DGP previously explained and compute the true ATT. We replicate this 5,000 times. For convenience, we wrap the previous codes in a function and compute the true ATT within that function.
+
+```{r define-simul_check}
+simul_check <- function(seed) {
+  
+  set.seed(seed)
+  # Parameters
+  n <- 500
+  mu0 <- -1
+  mu1 <- +1
+  r0 <- +.7
+  r1 <- -.5
+  a <- 1
+  a0 <-  3
+  a1 <-  2
+  a2 <-  -1.5
+  p1 <- .5
+  Mu0 <- rep(mu0, 2)
+  Mu1 <- rep(mu1, 2)
+  Sig0 <- matrix(c(1, r0, r0, 1), 2, 2)
+  Sig1 <- matrix(c(1, r1, r1, 1), 2, 2)
+  
+  # Draw covariates
+  X0 <- rmnorm(n, mean = a * Mu0, varcov = Sig0)
+  X1 <- rmnorm(n, mean = a * Mu1, varcov = Sig1)
+  # Random noise
+  E <- rnorm(n)
+  # Binary treatment
+  A <- sample(0:1, size = n, replace = TRUE, prob = c(1 - p1, p1))
+  
+  df <- tibble(
+    X1_0 = X0[, 1],
+    X2_0 = X0[, 2],
+    X1_1 = X1[, 1],
+    X2_1 = X1[, 2],
+    X1 = A * X1_1 + (1-A) * X1_0,
+    X2 = A * X2_1 + (1-A) * X2_0,
+    A = A,
+    Y0 = a1 * X1_0 + a2 * X2_0 + E,
+    Y1 = a1 * X1_1 + a2 * X2_1 + a0 + E,
+    Y = A * Y1 + (1-A) * Y0
+  )
+  
+  ## Observed outcome
+  Y <- df$Y
+  ## Potential outcomes
+  Y0 <- df$Y0
+  Y1 <- df$Y1
+  # ATT
+  ATT_true <- mean((Y1 - Y0)[A == 1])
+  
+  ATT_true
+}
+
+```
+
+Let us call that function 5,000 times.
+```{r eval-mc-simul, eval=FALSE}
+# This chunk takes about 4 seconds to run.
+# We do not evaluate during compilation. Instead, we load previously
+# obtained results.
+out <- pbapply::pblapply(1:5000, simul_check) |> 
+  list_c()
+if (!dir.exists("../output/")) dir.create("../output/")
+save(out, file = "../output/gaussian-example-mc-out.rda")
+```
+
+The mean and standard deviation of the ATE using the DPG described above:
+```{r show-ATT_true_est}
+load("../output/gaussian-example-mc-out.rda")
+c(ATT_true_est = mean(out), ATT_true_est = sd(out))
+```
+
+The distribution of the true ATE computed over 5,000 replications is shown in @fig-hist-ate-mc-simul-sanity-check.
+
+```{r}
+#| code-fold: true
+#| code-summary: Codes to create the Figure.
+#| fig-cap: Distribution of the estimate of the ATE over 5,000 Monte-Carlo simulations.
+#| label: fig-hist-ate-mc-simul-sanity-check
+ggplot(data = tibble(ATT = out)) +
+  geom_histogram(
+    mapping = aes(x = ATT), colour = "black", fill = "lightgray"
+  ) +
+  geom_vline(
+    xintercept = mean(out), col = "blue", linetype = "dashed", linewidth = 2
+  ) +
+  labs(y = "Freq.") +
+  theme_paper()
+```
+
+
+
+:::
+
+## A Closer Look at Overlapping
+
+
+When the estimation of the ATT is done using the AIPW estimator, the procedure requires a propensity-score model:
+$$e(X) = \mathbb{P}(A = 1 \mid X),$$
+and an outcome regression for the untreated potential outcome:
+$$\mu_0(\boldsymbol{X}) = \mathbb{E}[Y \mid \boldsymbol{X}, A = 0].$$
+
+The ATT is then estimated as follows:
+$$
+\widehat{\text{ATT}}_{\text{AIPW}} = \frac{1}{n_1} \sum_{i: A_i = 1} \left[ Y_i - \hat{\mu}_0(X_i) \right] + \frac{1}{n_1} \sum_{i: A_i = 0} \frac{\hat{e}(X_i)}{1 - \hat{e}(X_i)} \left[ Y_i - \hat{\mu}_0(X_i) \right]
+$$
+
+The first term imputes the counterfactual outcome for treated units, whereas the second corrects any residual bias by re-weighting control residuals. 
+
+Consistency holds if either the propensity-score model or the outcome model is correctly specified (known as the estimator's double robustness).
+
+For every covariate pattern represented among treated units, the identification assumption is required:
+$$0 < \mathbb{P}(A = 1 \mid X) < 1$$
+This assumption ensures an adequate overlap and prevents infinite weights.
+
+In finite samples, extreme estimated propensities ($\hat{e}(\boldsymbol{X})\approx 0$ or $\hat{e}(\boldsymbol{X})\approx 1$) lead to inflated variance. A common practice is then to introduce a trimming rule that discards observations with $\hat{e}(\boldsymbol{X})$ outside a pre-specified interval. Common values are $[0.05;0.95]$ or $[0.01;0.99]$.
+
+Here, we want to have a closer look at what happens when trimming.
+
+
+Let us consider two examples:
+
+1. Large overlap: $\mu_0=-.5$, $\mu_1=.5$, the rest of the parameters are the same as those presented above.
+2. Limited overlap: $\mu_0=-1.5$, $\mu_1=1.5$, the rest of the parameters are the same as those presented above.
+
+
+```{r}
+#| code-fold: true
+#| code-summary: Codes to create the Figure.
+#| message: false
+#| warning: false
+#| fig-height: 2.3
+#| fig-width: 4.6
+#| fig-cap: Level curves of the two densities of $\boldsymbol{X} \mid A=a$ in the toy example, and associated propensities. The white area correponds to $x$ where the propensity score is in $[1\%,99\%]$. The <span style="color:#1b95e0;">blue area</span> corresponds to $P[A=1 \mid \boldsymbol{X}] < 1\%$, the <span style="color:#7F170E;">red area</span> corresponds to areas where $P[A=1 \mid \boldsymbol{X}] > 99\%$.
+#| label: fig-level-curves-overlap
+
+# First example
+mu0 <- -.5
+mu1 <- .5
+r0 <- +.7
+r1 <- -.5
+a <- 1
+p1 <- .5
+Mu0 <- rep(mu0, 2)
+Mu1 <- rep(mu1, 2)
+Sig0 <- matrix(c(1, r0, r0, 1), 2, 2)
+Sig1 <- matrix(c(1, r1, r1, 1), 2, 2)
+
+u <- seq(-10, 10, length = 161)
+dxy <- expand_grid(X1 = u, X2 = u)
+
+d0 <- dmnorm(as.matrix(dxy), mean = a * Mu0, varcov = Sig0)
+d1 <- dmnorm(as.matrix(dxy), mean = a * Mu1, varcov = Sig1)
+
+z0 <- matrix(d0, nrow = length(u))
+z1 <- matrix(d1, nrow = length(u))
+
+par(mar = c(2.1, 2.1, 0.1, 0.1), mfrow = c(1,2))
+# x_lim <- y_lim <- c(-3.5, 3.5)
+x_lim <- c(-3, 3)
+y_lim <- c(-4, 4)
+
+plot(NA,NA, 
+     xlim = x_lim, ylim = y_lim, 
+     xlab = "", ylab = "", pch = NA,
+     family = font_family
+)
+title(xlab = "X1", ylab="X2", line=2, cex.lab=1.2, family = font_family)
+
+
+
+# posterior probability of class 1 (using Bayes' theorem)
+posterior <- (p1 * d1) / ((1-p1) * d0 + p1 * d1)
+# reshape for plotting
+post_matrix <- matrix(posterior, nrow = length(u), byrow = FALSE)
+
+lvl <- c(.01, .99)
+
+# contour(
+# u, u, post_matrix, levels = lvl, drawlabels = TRUE,
+# col = "blue", lty = 3, lwd = 2,
+# xlab = "X1", ylab = "X2", main = "Region where 0.01 ≤ P(A|X) ≤ 0.99"
+# )
+
+# extract contour lines
+contours <- contourLines(u, u, post_matrix, levels = lvl)
+param_dens <- 35
+cl <- contours
+for (i in 1:length(cl)) {
+  if (cl[[i]]$x[2] < cl[[i]]$x[1]) {
+    cl[[i]]$x <- rev(cl[[i]]$x)
+    cl[[i]]$y <- rev(cl[[i]]$y)
+  }
+}
+
+# Bottom-left
+polygon(
+  c(cl[[1]]$x, 10, -10, -10),
+  c(cl[[1]]$y, -10, -10, 10),
+  col=scales::alpha(colGpe0, .9), density = param_dens,
+  border = NA
+)
+# Upper-right
+polygon(
+  c(cl[[2]]$x, 10, 10, -10),
+  c(cl[[2]]$y, -10, 10, 10),
+  col=scales::alpha(colGpe0, .9), density = param_dens,
+  border = NA
+)
+# Upper-left
+polygon(
+  c(cl[[3]]$x, 10, -10, -10),
+  c(cl[[3]]$y, 10, 10, -10),
+  col=scales::alpha(colGpe1, .9), density = param_dens,
+  border = NA
+)
+# Bottom-right
+polygon(
+  c(cl[[4]]$x, 10, 10, -10),
+  c(cl[[4]]$y, 10, -10, -10),
+  col=scales::alpha(colGpe1, .9), density = param_dens,
+  border = NA
+)
+
+contour_lwr <- cl[sapply(cl, function(x) x$level == lvl[1])]
+contour_upr <- contours[sapply(cl, function(x) x$level == lvl[2])]
+for (c in contour_lwr) lines(c$x, c$y, col = "gray30", lty = 1)
+for (c in contour_upr) lines(c$x, c$y, col = "gray30", lty = 1)
+
+# Add contour lines
+contour(u, u, z0, add = TRUE, lwd = 1, col = colGpe0, family = font_family, labcex = 1)
+contour(u, u, z1, add = TRUE, lwd = 1, col = colGpe1, family = font_family, labcex = 1)
+
+# Second example
+mu0 <- -1.5
+mu1 <- 1.5
+r0 <- +.7
+r1 <- -.5
+a <- 1
+p1 <- .5
+Mu0 <- rep(mu0, 2)
+Mu1 <- rep(mu1, 2)
+Sig0 <- matrix(c(1, r0, r0, 1), 2, 2)
+Sig1 <- matrix(c(1, r1, r1, 1), 2, 2)
+
+u <- seq(-10, 10, length = 161)
+dxy <- expand_grid(X1 = u, X2 = u)
+
+d0 <- dmnorm(as.matrix(dxy), mean = a * Mu0, varcov = Sig0)
+d1 <- dmnorm(as.matrix(dxy), mean = a * Mu1, varcov = Sig1)
+
+z0 <- matrix(d0, nrow = length(u))
+z1 <- matrix(d1, nrow = length(u))
+
+# x_lim <- y_lim <- c(-3.5, 3.5)
+x_lim <- c(-3, 3)
+y_lim <- c(-4, 4)
+
+plot(NA,NA, 
+     xlim = x_lim, ylim = y_lim, 
+     xlab = "", ylab = "", pch = NA,
+     family = font_family
+)
+title(xlab = "X1", ylab="X2", line=2, cex.lab=1.2, family = font_family)
+# posterior probability of class 1 (using Bayes' theorem)
+posterior <- (p1 * d1) / ((1-p1) * d0 + p1 * d1)
+# reshape for plotting
+post_matrix <- matrix(posterior, nrow = length(u), byrow = FALSE)
+
+lvl <- c(.01, .99)
+
+# contour(
+# u, u, post_matrix, levels = lvl, drawlabels = TRUE,
+# col = "blue", lty = 3, lwd = 2,
+# xlab = "X1", ylab = "X2", main = "Region where 0.01 ≤ P(A|X) ≤ 0.99"
+# )
+
+# extract contour lines
+contours <- contourLines(u, u, post_matrix, levels = lvl)
+
+cl <- contours
+for (i in 1:length(cl)) {
+  if (cl[[i]]$x[2] < cl[[i]]$x[1]) {
+    cl[[i]]$x <- rev(cl[[i]]$x)
+    cl[[i]]$y <- rev(cl[[i]]$y)
+  }
+}
+
+# Bottom-left
+polygon(
+  c(cl[[1]]$x, 10, -10, -10),
+  c(cl[[1]]$y, -10, -10, 10),
+  col=scales::alpha(colGpe0, .9), density = param_dens,
+  border = NA
+)
+# Upper-right
+polygon(
+  c(cl[[2]]$x, 10, 10, -10),
+  c(cl[[2]]$y, -10, 10, 10),
+  col=scales::alpha(colGpe0, .9), density = param_dens,
+  border = NA
+)
+# Upper part (wrong but not for the cropped image)
+polygon(
+  c(cl[[3]]$x, 10, 10, -10),
+  c(cl[[3]]$y, -10, 10, 10),
+  col=scales::alpha(colGpe1, .9), density = param_dens,
+  border = NA
+)
+
+contour_lwr <- cl[sapply(cl, function(x) x$level == lvl[1])]
+contour_upr <- contours[sapply(cl, function(x) x$level == lvl[2])]
+for (c in contour_lwr) lines(c$x, c$y, col = "gray30", lty = 1)
+for (c in contour_upr) lines(c$x, c$y, col = "gray30", lty = 1)
+
+# Add contour lines
+contour(u, u, z0, add = TRUE, lwd = 1, col = colGpe0, family = font_family, labcex = 1)
+contour(u, u, z1, add = TRUE, lwd = 1, col = colGpe1, family = font_family, labcex = 1)
+
+p <- recordPlot()
+pdf(paste0(path, "gauss-ex-level-curves-overlap.pdf"), width = 4.6, height = 4.6/2)
+replayPlot(p)
+dev.off()
+```
+
+
+## Brouillon
+
+```{r gen-data-2}
+set.seed(12345)
+# Parameters
+n <- 500
+mu0 <- -1
+mu1 <- +1
+r0 <- +.7
+r1 <- -.5
+a <- 1
+a0 <-  3
+a1 <-  2
+a2 <-  -1.5
+p1 <- .5
+Mu0 <- rep(mu0, 2)
+Mu1 <- rep(mu1, 2)
+Sig0 <- matrix(c(1, r0, r0, 1), 2, 2)
+Sig1 <- matrix(c(1, r1, r1, 1), 2, 2)
+
+# Draw covariates
+X0 <- rmnorm(n, mean = a * Mu0, varcov = Sig0)
+X1 <- rmnorm(n, mean = a * Mu1, varcov = Sig1)
+# Random noise
+E <- rnorm(n)
+# Binary treatment
+A <- sample(0:1, size = n, replace = TRUE, prob = c(1 - p1, p1))
+
+df <- tibble(
+  X1_0 = X0[, 1],
+  X2_0 = X0[, 2],
+  X1_1 = X1[, 1],
+  X2_1 = X1[, 2],
+  X1 = A * X1_1 + (1-A) * X1_0,
+  X2 = A * X2_1 + (1-A) * X2_0,
+  A = A,
+  Y0 = a1 * X1_0 + a2 * X2_0 + E,
+  Y1 = a1 * X1_1 + a2 * X2_1 + a0 + E,
+  Y = A * Y1 + (1-A) * Y0
+)
+```
+
+
+
+```{r}
+tb <- df[, c("Y", "A", "X1", "X2")]
+S_name <- "A"
+S_0 <- 0
+Y_name <- "Y"
+```
+
+```{r}
+library(randomForest)
+```
+
+
+```{r}
+n_folds <- 5 # 5-fold cross-fitting
+folds <- sample(rep(1:n_folds, length.out = n))
+# Init results
+## outcomes
+mu0_hat <- rep(NA, n)
+mu1_hat <- rep(NA, n)
+## propensity scores
+e_hat  <- rep(NA, n)
+
+for (k in 1:n_folds) {
+  idx_valid <- which(folds == k)
+  idx_train <- setdiff(1:n, idx_valid)
+  tb_train <- tb |> slice(idx_train)
+  tb_valid <- tb |> slice(-idx_train)
+  # Outcome models
+  mu0_model <- randomForest(
+    x = tb_train |> filter(!!sym(S_name) == !!S_0) |>
+      select(-!!Y_name, -!!S_name),
+    y = tb_train |> filter(!!sym(S_name) == !!S_0) |>
+      pull(!!Y_name)
+  )
+  mu1_model <- randomForest(
+    x = tb_train |>
+      filter(!!sym(S_name) != !!S_0) |> select(-!!Y_name, -!!S_name),
+    y = tb_train |> filter(!!sym(S_name) != !!S_0) |>
+      pull(!!Y_name)
+  )
+  
+  mu0_hat[idx_valid] <- predict(
+    mu0_model, newdata = tb_valid |> select(-!!Y_name, -!!S_name)
+  ) |> as.character() |> as.numeric()
+  mu1_hat[idx_valid] <- predict(
+    mu1_model, newdata = tb_valid |> select(-!!Y_name, -!!S_name)
+  ) |> as.character() |> as.numeric()
+  
+  # Propensity model
+  ps_model <- glm(
+    formula(paste0(S_name, "~.")), data = tb_train |> select(-!!Y_name),
+    family = binomial()
+  )
+  # Propensity scores
+  e_hat[idx_valid] <- predict(
+    ps_model, newdata = tb_valid, type = "response"
+  )
+  
+}
+
+```
+
+```{r}
+library(kdensity)
+kprop <- kdensity::kdensity(e_hat, kernel = "beta", bw = .05)
+plot(kprop, xlab = "", main = "", ylab = "", ylim = c(0, 6), lwd = 2)
+
+S <- pull(tb, !!S_name)
+Y <- pull(tb, !!Y_name)
+treated_idx <- which(S != S_0)
+
+aipw_terms <- S * (Y - mu0_hat) +
+  (1 - S) * (e_hat / (1 - e_hat)) * (Y - mu0_hat)
+ATT_aipw <- sum(aipw_terms[treated_idx]) / sum(S == 1)
+```
+
+```{r}
+#| code-fold: true
+#| code-summary: The function for the Monte-Carlo simulation.
+simu <- function(n = 500) {
+  mu0 <- -1
+  mu1 <- +1
+  r0 <- +.7
+  r1 <- -.5
+  a <- 2 * runif(1)
+  a0 <- 3
+  a1 <- 2
+  a2 <- -1.5
+  Mu0 <- rep(mu0, 2)
+  Mu1 <- rep(mu1, 2)
+  Sig0 <- matrix(c(1, r0, r0, 1), 2, 2)
+  Sig1 <- matrix(c(1, r1, r1, 1), 2, 2)
+  # Draw covariates
+  X0 <- rmnorm(n, mean = a * Mu0, varcov = Sig0)
+  X1 <- rmnorm(n, mean = a * Mu1, varcov = Sig1)
+  # Random noise
+  E <- rnorm(n)
+  # Binary treatment
+  p1 <- .5
+  A <- sample(0:1, size = n, replace = TRUE, prob = c(1 - p1, p1))
+  
+  df <- tibble(
+    X1_0 = X0[, 1],
+    X2_0 = X0[, 2],
+    X1_1 = X1[, 1],
+    X2_1 = X1[, 2],
+    X1 = A * X1_1 + (1-A) * X1_0,
+    X2 = A * X2_1 + (1-A) * X2_0,
+    A = A,
+    Y0 = a1 * X1_0 + a2 * X2_0 + E,
+    Y1 = a1 * X1_1 + a2 * X2_1 + a0 + E,
+    Y = A * Y1 + (1-A) * Y0
+  )
+  
+  tb <- df[, c("Y", "A", "X1", "X2")]
+  
+  S_name <- "A"
+  S_0 <- 0
+  Y_name <- "Y"
+  
+  n_folds <- 5 # 5-fold cross-fitting
+  folds <- sample(rep(1:n_folds, length.out = n))
+  # Init results
+  ## outcomes
+  mu0_hat <- rep(NA, n)
+  mu1_hat <- rep(NA, n)
+  ## propensity scores
+  e_hat  <- rep(NA, n)
+  
+  for (k in 1:n_folds) {
+    idx_valid <- which(folds == k)
+    idx_train <- setdiff(1:n, idx_valid)
+    tb_train <- tb |> slice(idx_train)
+    tb_valid <- tb |> slice(-idx_train)
+    # Outcome models
+    mu0_model <- randomForest(
+      x = tb_train |> filter(!!sym(S_name) == !!S_0) |>
+        select(-!!Y_name, -!!S_name),
+      y = tb_train |> filter(!!sym(S_name) == !!S_0) |>
+        pull(!!Y_name)
+    )
+    mu1_model <- randomForest(
+      x = tb_train |>
+        filter(!!sym(S_name) != !!S_0) |> select(-!!Y_name, -!!S_name),
+      y = tb_train |> filter(!!sym(S_name) != !!S_0) |>
+        pull(!!Y_name)
+    )
+    
+    mu0_hat[idx_valid] <- predict(
+      mu0_model, newdata = tb_valid |> select(-!!Y_name, -!!S_name)
+    ) |> as.character() |> as.numeric()
+    mu1_hat[idx_valid] <- predict(
+      mu1_model, newdata = tb_valid |> select(-!!Y_name, -!!S_name)
+    ) |> as.character() |> as.numeric()
+    
+    # Propensity model
+    ps_model <- glm(
+      formula(paste0(S_name, "~.")), data = tb_train |> select(-!!Y_name),
+      family = binomial()
+    )
+    # Propensity scores
+    e_hat[idx_valid] <- predict(
+      ps_model, newdata = tb_valid, type = "response"
+    )
+    
+  }
+  
+  S <- pull(tb, !!S_name)
+  Y <- pull(tb, !!Y_name)
+  treated_idx <- which(S != S_0)
+  
+  aipw_terms <- S * (Y - mu0_hat) +
+    (1 - S) * (e_hat / (1 - e_hat)) * (Y - mu0_hat)
+  ATT_aipw <- sum(aipw_terms[treated_idx]) / sum(S == 1)
+  
+  tibble(
+    a = a, 
+    ATT_aipw = ATT_aipw, 
+    prob_1_99 = mean((e_hat > .01) & (e_hat < .99))
+  )
+}
+```
+
+```{r run-simul-mc, eval=FALSE}
+# The estimation takes about 4 minutes.
+# Previously obtained results are loaded here (this chunk is not estimated).
+library(pbapply)
+library(parallel)
+ncl <- detectCores()-1
+(cl <- makeCluster(ncl))
+
+clusterEvalQ(cl, {
+  library(tidyverse)
+  library(randomForest)
+  library(mnormt)
+}) |>
+  invisible()
+
+# V <- Vectorize(simu)(rep(500,2))
+res_sim <- pbapply::pblapply(rep(500, 2000), simu, cl = cl)
+stopCluster(cl)
+
+res_sim_tb <- list_rbind(res_sim)
+
+save(res_sim_tb, file = "../output/res_sim_tb.rda")
+```
+We load the previously obtained results:
+```{r load-res_sim_tb}
+load("../output/res_sim_tb.rda")
+```
+
+```{r}
+plot(
+  res_sim_tb$a, res_sim_tb$ATT_aipw,
+  cex = 1,
+  xlab = "Distance between means (x2)",
+  ylab = "Estimated ATT, AIPW, (n=500)",
+  pch = 19,
+  col = scales::alpha("blue", .3)
+)
+DF <- data.frame(x = res_sim_tb$a, y = res_sim_tb$ATT_aipw)
+library(quantreg)
+library(splines)
+rq9 <- rq(y ~ bs(x), data = DF, tau = .9)
+rq1 <- rq(y ~ bs(x), data = DF, tau = .1)
+rqxbar <- lm(y ~ bs(x), data = DF)
+vu <- (0:40) / 20
+y1 <- predict(rq1, newdata = data.frame(x = vu))
+y9 <- predict(rq9, newdata = data.frame(x = vu))
+yxbar <- predict(rqxbar, newdata = data.frame(x = vu))
+lines(vu, yxbar, lwd = 2, col = "red")
+lines(vu, y1, lwd = 1, col = "red")
+lines(vu, y9, lwd = 1, col = "red")
+abline(h = 3, col = "blue")
+
+```
+
+
+```{r}
+plot(
+  res_sim_tb$a, res_sim_tb$prob_1_99,
+  cex = 1,
+  xlab = "Distance between means (x2)",
+  ylab = "Probability propensity score in [1%;99%]",
+  pch = 19,
+  col = scales::alpha("blue", .3)
+)
+DF2 <- data.frame(x = res_sim_tb$a, y = res_sim_tb$prob_1_99)
+rqxbar <- lm(y ~ bs(x, 8), data = DF2)
+vu <- (0:40) / 20
+yxbar <- predict(rqxbar, newdata = data.frame(x = vu))
+lines(vu, yxbar, lwd = 2,col = "red")
+```
+
+

@@ -1,0 +1,29 @@
+/*-- scss:defaults --*/
+
+@import url(http://fonts.googleapis.com/css?family=Montserrat:300,300italic,800,800italic);
+
+$font-family: "Source Sans Pro", "Helvetica", sans-serif;
+$font-family-monospace: "Source Code Pro", monospace;
+
+/*$code-bg: #34495e ;
+$code-color: #ffa07a;*/
+
+/*-- scss:rules --*/
+
+#highlight-green {
+  background-color: #009E73;
+  color: white;
+  padding: 0.1em 0.2em;
+}
+
+#highlight-gold {
+  background-color: #E69F00;
+  color: black;
+  padding: 0.1em 0.2em;
+}
+
+#highlight-purple {
+  background-color: #CC79A7;
+  color: black;
+  padding: 0.1em 0.2em;
+}

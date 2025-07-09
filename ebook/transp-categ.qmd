@@ -1,0 +1,553 @@
+# Counterfactuals for Categorical Features {#sec-transp-categ}
+
+
+:::{.callout-note}
+
+## Objectives
+
+XXX
+
+For simplicity, we consider a categorical variable with only 3 categories. This allows us to illustrate the methodology on ternary plots.
+
+:::
+
+```{r package-settings}
+#| warning: false
+#| message: false
+library(dplyr)
+library(stringr)
+library(ggtern)
+library(compositions)
+library(ggalluvial)
+```
+
+```{r}
+#| echo: false
+#| eval: true
+#| message: false
+#| warning: false
+#| file: _myfunctions.R
+```
+
+$$
+\definecolor{wongBlack}{RGB}{0,0,0}
+\definecolor{wongGold}{RGB}{230, 159, 0}
+\definecolor{wongLightBlue}{RGB}{86, 180, 233}
+\definecolor{wongGreen}{RGB}{0, 158, 115}
+\definecolor{wongYellow}{RGB}{240, 228, 66}
+\definecolor{wongBlue}{RGB}{0, 114, 178}
+\definecolor{wongOrange}{RGB}{213, 94, 0}
+\definecolor{wongPurple}{RGB}{204, 121, 167}
+\definecolor{colA}{RGB}{255, 221, 85}
+\definecolor{colB}{RGB}{148, 78, 223}
+\definecolor{colC}{RGB}{63, 179, 178}
+\definecolor{colGpeZero}{RGB}{127, 23, 14}
+\definecolor{colGpeUn}{RGB}{27, 149, 224}
+$$
+
+```{r graphs-settings}
+#| code-fold: true
+#| code-summary: Codes for graphical parameters.
+col_categ <- c("#ffdd55","#944edf","#3fb3b2")
+colA <- col_categ[1] ; colB <- col_categ[2] ; colC <- col_categ[3]
+col_group <- c("#1b95e0","darkred")
+colGpe1 <- col_group[2]
+colGpe0 <- col_group[1]
+font_size <- 20
+font_family <- "CMU Serif"
+
+path <- "./figs/"
+if (!dir.exists(path)) dir.create(path)
+
+theme_ggtern_paper <- function(...) {
+  font_family <- "CMU Serif"
+  font_size <- 20
+  theme(
+    strip.background = element_rect(colour = "black", fill = NA),
+    strip.text.x = element_text(colour = "black"),
+    strip.text = ggtext::element_markdown(),
+    text = element_text(family = font_family, size = unit(font_size, "pt")),
+    axis.title = element_text(size = rel(.8)),
+    tern.axis.arrow.show = TRUE,
+    tern.axis.arrow.sep = .13,
+    tern.axis.vshift = .05,
+    panel.border = element_rect(colour = NA)
+  )
+}
+
+theme_paper <- function(...) {
+  font_family <- "CMU Serif"
+  font_size <- 20
+  theme(
+    text = element_text(family = font_family, size = unit(font_size, "pt")),
+    plot.background = element_rect(fill = "transparent", color = NA),
+    # legend.text = element_text(size = rel(.8)),
+    # legend.title = element_text(size = rel(.8)),
+    # legend.title = element_text(size = .8*font_size),
+    # legend.text = element_text(size = .8*font_size)
+    legend.key = element_blank(),
+    panel.spacing = unit(1, "lines"),
+    panel.background = element_rect(fill = NA),
+    panel.grid.major = element_line(colour = "grey80"),
+    plot.title = element_text(hjust = 0, size = rel(1.3), face = "bold"),
+    plot.title.position = "plot",
+    strip.background = element_rect(fill = NA, colour = NA)
+    # strip.text = element_text(size = rel(1))
+  )
+}
+```
+
+
+Consider a categorical variables $x \in \{{\color{colA}A}, {\color{colB}B}, {\color{colC}C}\}$, with group-specific distributions. The categorical variable could be, for example, the treatment administered for a disease: `r colorize("A=surgery", colA)`, `r colorize("B=medication", colB)`, `r  colorize("C=no treatment", colC)`. We consider two groups (this could `r colorize("non-Black", colGpe0)`/`r colorize("Black", colGpe1)`, for example). We want to build a **counterfactual category** for each individual from a group to the other. 
+
+
+
+Let `r colorize("Group 1", colGpe1)` and `r colorize("Group 0", colGpe0)` represent two subpopulations in which the distribution of $x$ differs:
+
+- in `r colorize("Group 1", colGpe1)`, the category distribution is $\boldsymbol{p}_1 = (0.5, 0.3, 0.2)$,
+- in `r colorize("Group 0", colGpe0)` it is $\boldsymbol{p}_0 = (0.1, 0.5, 0.4)$. 
+
+`r colorize("Group 1", colGpe1)` could be, for example, `r colorize("Black individuals", colGpe1)`, whereas `r colorize("Group 0", colGpe0)` could be individuals who are not Black.
+
+Assume that the objective is to define, for each individual in `r colorize("Group 1", colGpe1)`, a counterfactual category that reflects the distributional characteristics of `r colorize("Group 0", colGpe0)`. That is, we want to know what would be the medical treatment of a `r colorize("Black individuals", colGpe1)` with a given treatment (e.g., "`r colorize("C=no treatment", colC)`) had they been `r colorize("non-Black", colGpe0)`.
+
+
+Let us generate a dummy data set with 100 individuals in both `r colorize("Group 0", colGpe0)` and `r colorize("Group 1", colGpe1)`.
+```{r}
+set.seed(1234)
+n <- 100
+n0 <- n1 <- n
+p0 <- c(0.5, 0.3, 0.2)
+p1 <- c(0.1, 0.5, 0.4)
+# Sample category
+x0 <- sample(c(rep("A", p0[1] * n0), rep("B", p0[2] * n0), rep("C", p0[3] * n0)), replace = FALSE)
+x1 <- sample(c(rep("A", p1[1] * n1), rep("B", p1[2] * n1), rep("C", p1[3] * n1)), replace = FALSE)
+cat_levels <- c("A", "B", "C")
+```
+
+
+## 1-to-1 Matching {#sec-one-to-one-matching}
+
+A way to obtain the counterfactual for the categorical variable is to implement a **1-to-1 matching procedure**. 
+
+Each category is assigned an arbitrary numeric value (e.g., $A = 1$, $B = 2$, $C = 3$), allowing us to define a cost matrix based on the absolute difference between encoded categories. That is, the cost of matching an individual from `r colorize("Group 1", colGpe1)` with category $x_{j1}$ to an individual from `r colorize("Group 0", colGpe0)` with category $x_{i0}$ is given by $C_{ij} = |x_{i0} - x_{j1}|$.
+
+A linear sum assignment problem can then be used to find the matching that minimizes the total cost across pairs.
+
+The matched category from `r colorize("Group 0", colGpe0)` is interpreted as the counterfactual category for the corresponding `r colorize("Group 1", colGpe1)` individual.
+
+
+We can compute the distance between the observations from `r colorize("Group 0", colGpe0)` to `r colorize("Group 1", colGpe1)`, by setting numeric values to each category: A=1, B=2, C=3:
+
+```{r compute-cost_matrix}
+x0_index <- match(x0, cat_levels)
+x1_index <- match(x1, cat_levels)
+cost_matrix <- outer(x0_index, x1_index, function(i, j) abs(i - j))
+```
+
+The linear sum assignment problem is tackled with `solve_LSAP()`{.R} from {clue}.
+
+```{r define-assignment}
+library(clue)
+assignment <- solve_LSAP(cost_matrix)
+```
+
+The mapping can be stored in a tibble.
+```{r define-tb_coupling}
+tb_coupling <- tibble(
+  x0 = x0,
+  x1 = x1[assignment]
+) |> 
+  mutate(
+    cost = abs(match(x0, cat_levels) - match(x1, cat_levels))
+  )
+```
+
+We compute the number of observations from `r colorize("Group 1", colGpe1)` matched with observations from `r colorize("Group 0", colGpe0)` per category.
+```{r}
+tb_coupling |> 
+  group_by(x1, x0) |> 
+  count() |> 
+  group_by(x1) |> 
+  mutate(prop = 100 * n / sum(n))
+```
+
+Then, we can visualize the results, using an alluvial plot (@fig-categ-alluv). All individuals in `r colorize("Group 1", colGpe1)` with label `r colorize("A", colA)` are matched directly to individuals in `r colorize("Group 0", colGpe0)` with the same label. The remaining 40% of individuals in `r colorize("Group 0", colGpe0)` labeled `r colorize("A", colA)` are then matched to `r colorize("Group 1", colGpe1)` individuals who originally had label `r colorize("B", colB)` or `r colorize("C", colC)`. This matching is performed probabilistically: among `r colorize("Group 1", colGpe1)` individuals with label `r colorize("B", colB)`, 60% retain their original label, and 40% are reclassified as `r colorize("A", colA)`; among those with label `r colorize("C", colC)`, 50% remain `r colorize("C", colC)`, and 50% are reclassified as `r colorize("A", colA)`.
+
+```{r}
+#| label: fig-categ-alluv
+#| fig-cap: Matching individuals given a categorical variable.
+#| code-fold: true
+#| code-summary: Codes to create the Figure.
+#| warning: false
+flow <- data.frame(
+  depart = rep(LETTERS[1:3], 3),
+  category = rep(LETTERS[1:3], each = 3),
+  freq = as.vector(table(tb_coupling$x1, tb_coupling$x0))
+)
+p_1 <- ggplot(
+  data = flow,
+  mapping = aes(axis1 = depart, axis2 = category, y = freq)
+) +
+  geom_alluvium(aes(fill = category)) +
+  geom_stratum() +
+  scale_fill_manual(values = col_categ) +
+  geom_text(
+    stat = "stratum",
+    mapping = aes(label = after_stat(stratum)),
+    family = font_family
+  ) +
+  # scale_x_discrete(
+  #   limits = c("Group 1", "Group 0"),
+  #   expand = c(0.15, 0.05)
+  # ) +
+  scale_x_discrete(
+    limits = c("Group 1", "Group 0"),
+    labels = c(
+      "Group 1" = str_c("<span style='color:", col_group[2], ";'>Group 1</span>"),
+      "Group 0" = str_c("<span style='color:", col_group[1], ";'>Group 0</span>")
+    ),
+    expand = c(0.15, 0.05)
+  ) +
+  ylab("proportions") + 
+  scale_y_continuous(transform = ) +
+  # theme_minimal(base_size = font_size, base_family = font_family) +
+  theme_paper() +
+  theme(
+    axis.text.x = ggtext::element_markdown()
+  )
+p_1
+```
+
+
+This can also be visualized on a ternary plot (@fig-categ-ternary).
+
+```{r}
+#| fig-cap: Matching individuals given a categorical variable, on a Ternary plot.
+#| label: fig-categ-ternary
+#| code-fold: true
+#| code-summary: Codes to create the Figure.
+#| warning: false
+# Create interpolated values using McCann (1997) displacement
+f_line_simplex <- function(x, 
+                           y, 
+                           lgt = 601) {
+  
+  zx <- as.numeric(clr(x))[1:2]
+  zy <- as.numeric(clr(y))[1:2]
+  t <- seq(0, 1, length = lgt)
+  
+  tx <- cbind(
+    (1 - t) * zx[1] + t * zy[1], 
+    (1 - t) * zx[2] + t * zy[2]
+  )
+  tx <- cbind(tx, -(tx[, 1] + tx[, 2]))
+  df <- as.data.frame(matrix(as.numeric(clrInv(tx)), lgt, 3))
+  names(df) <- c("A","B","C")
+  
+  df
+                           }
+
+# dummy dataset to create an empty ternary plot
+SB <- tibble(
+  A = c(0.2, 0.3, 0.5, 0.6),
+  B = c(0.3, 0.4, 0.2, 0.1),
+  C = 1 - c(0.2, 0.3, 0.5, 0.6) - c(0.3, 0.4, 0.2, 0.1),
+  group = c("1", "1", "0", "0")
+)
+
+p_2 <- ggtern(data = SB, aes(x = A, y = B, z = C)) +
+  # fake (invisible) points
+  # geom_point(size = 0.01, alpha = 0, aes(color = group)) +
+  # fake (invisible) lines
+  # geom_path(aes(color = group), data = SB, alpha = 0, show.legend = TRUE) +
+  scale_colour_manual(name = "group", values = col_group) +
+  guides(
+    colour = guide_legend(
+      override.aes = list(
+        linetype = "solid",
+        shape = NA,
+        size = 1.5,
+        alpha = 1
+      )
+    )
+  ) +
+  theme_light(base_size = font_size, base_family = font_family) +
+  theme_ggtern_paper() +
+  theme(
+    legend.title = element_text(size = font_size),
+    legend.text = element_text(size = font_size)
+    # tern.axis.hshift = .10
+  ) +
+  theme_latex(TRUE) +
+  theme_hidetitles()
+
+
+p_2 <- p_2 + 
+  geom_text(mapping = aes(x = 0.9, y = 0.06, z = 0.08), label = p0[1], color = col_group[1], family = font_family, size = font_size-3, size.unit = "pt") +
+  geom_text(mapping = aes(x = 0.09, y = 0.9, z = 0.09), label = p0[2], color = col_group[1], family = font_family, size = font_size-3, size.unit = "pt") +
+  geom_text(mapping = aes(x = 0.08, y = 0.06, z = 0.9), label = p0[3], color = col_group[1], family = font_family, size = font_size-3, size.unit = "pt") + 
+  geom_text(mapping = aes(x = 0.3, y = 0.1, z = 0.11), label = p1[1], color = col_group[2], family = font_family, size = font_size-3, size.unit = "pt") +
+  geom_text(mapping = aes(x = 0.15, y = 0.65, z = 0.25), label = p1[2], color = col_group[2], family = font_family, size = font_size-3, size.unit = "pt") +
+  geom_text(mapping = aes(x = 0.1, y = 0.2, z = 0.8), label = p1[3], color = col_group[2], family = font_family, size = font_size-3, size.unit = "pt") 
+
+
+Li1 <- f_line_simplex(x = c(.75, .125, .125), y = c(.125, .125, .75), lgt = 2)
+Li2 <- f_line_simplex(x = c(.75, .125, .125), y = c(.125, .75, .125), lgt = 2)
+p_2 <- p_2 + 
+  geom_line(
+    data = Li2, aes(x = A, y = B, z = C), 
+    color = col_group[2], linwidth = .6,
+    arrow = arrow(length=unit(0.20,"cm"))
+  ) + 
+  geom_line(
+    data = Li1, aes(x = A, y = B, z = C), 
+    color = col_group[2], linwidth = .6,
+    arrow = arrow(length=unit(0.20,"cm"))
+  ) 
+p_2
+```
+
+
+```{r}
+#| eval: false
+#| code-fold: true
+#| code-summary: Codes to export the figures in PDF.
+
+p_matching_indiv <- cowplot::plot_grid(
+  ggplotGrob(
+    p_1 +
+      # Remove top/bottom margin
+      theme(
+        plot.margin = ggplot2::margin(t = 0, r = 0, b = 0, l = 0)
+      )
+  ),
+  # table_grob,
+  ggplotGrob(
+    p_2 +
+      # Remove top/bottom margin
+      theme(
+        plot.background = element_rect(fill = "transparent", color = NA),
+        plot.margin = ggplot2::margin(t = 0, r = 0, b = 0, l = 0)
+      )
+  ),
+  rel_widths = c(1.4,1),
+  ncol = 2
+)
+
+p_matching_indiv
+
+filename <- "ternary-categ-matching-indiv"
+ggsave(
+  p_matching_indiv, file = str_c(path, filename, ".pdf"),
+  height = 2*1.75, width = 3.75*1.75,
+  family = font_family,
+  device = cairo_pdf
+)
+# Crop PDF
+system(paste0("pdfcrop ", path, filename, ".pdf ", path, filename, ".pdf"))
+```
+
+## Categorical Data in the Simplex
+
+In our example, for each observation, there exists a probability of belonging to each of the categories of the categorical variable, which is group-specific: $\boldsymbol{p}_1 = (0.1, 0.5, 0.4)$ and $\boldsymbol{p}_0 = (0.5, 0.3, 0.2)$.
+
+Let us generate again some observation in both groups, using the same vectors of probabilities as in @sec-one-to-one-matching: 
+```{r}
+set.seed(1234)
+n <- 100
+n0 <- n1 <- n
+p0 <- c(0.5, 0.3, 0.2)
+p1 <- c(0.1, 0.5, 0.4)
+# Sample category
+x0 <- sample(c("A", "B", "C"), size = n0, replace = TRUE, prob = p0)
+x1 <- sample(c("A", "B", "C"), size = n1, replace = TRUE, prob = p1)
+cat_levels <- c("A", "B", "C")
+```
+
+
+Now, assume we were able to estimate the propensities of belonging to each category, using a classifier. Instead of really training a classifier here, we will simply draw the values from a Dirichlet distribution, using `rdirichlet()`{.R} from {MCMCpack}. We consider two different situations, with more or less concentration around the mean.
+
+```{r}
+#| message: false
+library(MCMCpack)
+```
+
+
+:::{.panel-tabset}
+
+### First situation: lower concentration
+
+```{r define-tb_sample_z_1}
+set.seed(12345)
+alpha_A <- c(9, 3, 2)
+Z_A <- as.data.frame(rdirichlet(n0 + n1, alpha_A))
+alpha_B <- c(3, 11, 4)
+Z_B <- as.data.frame(rdirichlet(n0 + n1, alpha_B))
+alpha_C <- c(2, 3, 9)
+Z_C <- as.data.frame(rdirichlet(n0 + n1, alpha_C))
+# For each observation from group 0 and matched obs from group 1, we have
+# drawn a category (A, B, or C).
+# We add drawn propensities, depending on the category
+Z <- Z_A
+category <- c(x0, x1)
+Z[category == "B", ] <- Z_B[category == "B", ]
+Z[category == "C", ] <- Z_C[category == "C", ]
+tb_sample_z <- as_tibble(Z)
+names(tb_sample_z) <- c("A", "B", "C")
+tb_sample_z$group <- factor(c(rep(0, n0), rep(1, n1)), levels = c(0, 1))
+
+tb_sample_z_1 <- tb_sample_z
+tb_sample_z_1
+```
+
+
+### Second situation: higher concentration
+
+```{r define-tb_sample_z_2}
+set.seed(1234)
+alpha_A <- c(19, 3, 2)
+Z_A <- as.data.frame(rdirichlet(n0 + n1, alpha_A))
+alpha_B <- c(3, 17, 2)
+Z_B <- as.data.frame(rdirichlet(n0 + n1, alpha_B))
+alpha_C <- c(2, 3, 17)
+Z_C <- as.data.frame(rdirichlet(n0 + n1, alpha_C))
+# For each observation from group 0 and matched obs from group 1, we have
+# drawn a category (A, B, or C).
+# We add drawn propensities, depending on the category
+Z <- Z_A
+category <- c(x0, x1)
+Z[category == "B", ] <- Z_B[category == "B", ]
+Z[category == "C", ] <- Z_C[category == "C", ]
+tb_sample_z <- as_tibble(Z)
+names(tb_sample_z) <- c("A", "B", "C")
+tb_sample_z$group <- factor(c(rep(0, n0), rep(1, n1)), levels = c(0, 1))
+
+tb_sample_z_2 <- tb_sample_z
+tb_sample_z_2
+```
+
+:::
+
+
+The categorical variable in the simplex, using the simulated propensity scores, can be visualized on a ternary plot, as in @fig-ternary-propensity.
+
+```{r}
+#| code-fold: true
+#| code-summary: Codes to create the Figure.
+#| fig-cap: Using propensity scores, we have of points $\boldsymbol{x}_{0,i}$'s and $\boldsymbol{x}_{1,i}$'s in the simplex $\mathcal{S}_3$.
+#| label: fig-ternary-propensity
+p <- ggtern(
+  data = tb_sample_z_1 |> mutate(type = "(1)") |> 
+    bind_rows(
+      tb_sample_z_2 |> mutate(type = "(2)")
+    ), 
+  mapping = aes(x = A, y = B, z = C)) +
+  geom_point(size = 1, alpha = 0.7, mapping = aes(color = group)) +
+  scale_colour_manual(name = "group",values = col_group) +
+  facet_wrap(~ type) +
+  theme_light(base_size = font_size, base_family = font_family) +
+  theme_ggtern_paper() +
+  theme(
+    legend.title = element_text(size = .8 * font_size),
+    legend.text = element_text(size = .8 * font_size),
+    tern.axis.vshift = .08,
+    tern.axis.arrow.sep = .16,
+  ) +
+  # theme_latex(TRUE)
+  theme_hidetitles()
+p
+```
+
+```{r}
+#| eval: false
+#| code-fold: true
+#| code-summary: Codes to export the figures in PDF.
+filename <- "ternary-categ-drawn"
+ggsave(
+  p, file = str_c(path, filename, ".pdf"),
+  height = 2*1.75, width = 3.75*1.75,
+  family = font_family,
+  device = cairo_pdf
+)
+# Crop PDF
+system(paste0("pdfcrop ", path, filename, ".pdf ", path, filename, ".pdf"))
+```
+
+
+Let us apply 1-to-1 matching exactly as in @sec-one-to-one-matching, setting numeric values to each category: `r colorize("A", colA)`=1, `r colorize("B", colB)`=2, `r colorize("C", colC)`=3.
+
+```{r define-tb_coupling-2}
+x0_index <- match(x0, cat_levels)
+x1_index <- match(x1, cat_levels)
+cost_matrix <- outer(x0_index, x1_index, function(i, j) abs(i - j))
+# 1-1 matching
+assignment <- solve_LSAP(cost_matrix)
+# Store this in a tibble
+tb_coupling <- tibble(
+  x0 = x0,
+  x1 = x1[assignment]
+) |> 
+  mutate(
+    cost = abs(match(x0, cat_levels) - match(x1, cat_levels))
+  )
+```
+
+The matching can be visualized on a ternary plot (@fig-ternary-categ-ot).
+
+```{r}
+#| message: false
+#| warning: false
+#| #| code-fold: true
+#| code-summary: Codes to create the Figure.
+#| fig-cap: Optimal matching of $\boldsymbol{p}_{0,i}$'s and $\boldsymbol{p}_{1,i}$'s in the simplex $\mathcal{S}_3$.
+#| label: fig-ternary-categ-ot
+idx <- which(tb_coupling$cost != 0)
+
+# Ise the plot from previous figure as a baseline
+p_matching <- p
+
+# Draw a line joining the matched observations.
+for (i in idx) {
+  lines_1 <- f_line_simplex(
+    x = tb_sample_z_1[i, 1:3], 
+    y = tb_sample_z_1[n + assignment[i], 1:3], 
+    lgt = 101
+  )
+  lines_2 <- f_line_simplex(
+    x = tb_sample_z_2[i, 1:3], 
+    y = tb_sample_z_2[n + assignment[i], 1:3], 
+    lgt = 101
+  )
+  lines_both <- as_tibble(lines_1) |> mutate(type = "(1)") |> 
+    bind_rows(
+      as_tibble(lines_2) |> mutate(type = "(2)")
+    )
+  
+  p_matching <- p_matching + 
+    geom_line(
+      data = lines_both, 
+      mapping = aes(x = A, y = B, z = C), 
+      color = col_group[2], linewidth = .2,, alpha = .5,
+      arrow = arrow(length = unit(0.20, "cm"))
+    )
+}
+
+p_matching
+```
+
+
+```{r, eval=FALSE}
+#| code-fold: true
+#| code-summary: Codes to export the figures in PDF.
+filename <- "ternary-categ-ot"
+ggsave(
+  p_matching, file = str_c(path, filename, ".pdf"),
+  height = 2*1.75, width = 3.75*1.75,
+  family = font_family,
+  device = cairo_pdf
+)
+# Crop PDF
+system(paste0("pdfcrop ", path, filename, ".pdf ", path, filename, ".pdf"))
+```
+
