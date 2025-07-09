@@ -16,6 +16,7 @@ book:
         - transp-categ.qmd
         - barycentric.qmd
         - transport-categ-toy.qmd
+        - transport-gaussian-local-weights.qmd
     - references.qmd
   navbar:
     right:
