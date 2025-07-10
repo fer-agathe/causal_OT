@@ -1,0 +1,347 @@
+# Compas
+
+
+:::{.callout-note}
+
+## Objectives
+
+In this page, xxx
+
+:::
+
+```{r package-settings}
+#| warning: false
+#| message: false
+library(tidyverse)
+# remotes::install_github(
+#   repo = "fer-agathe/sequential_transport", subdir = "seqtransfairness"
+# )
+library(seqtransfairness)
+# remotes::install_github(repo = "fer-agathe/transport-simplex")
+library(transportsimplex)
+library(randomForest)
+library(grf)
+library(cluster)
+
+# Also required:
+# install.packages(mlr3fairness)
+```
+
+```{r}
+#| echo: false
+#| eval: true
+#| message: false
+#| warning: false
+#| file: _myfunctions.R
+```
+
+$$
+\definecolor{wongBlack}{RGB}{0,0,0}
+\definecolor{wongGold}{RGB}{230, 159, 0}
+\definecolor{wongLightBlue}{RGB}{86, 180, 233}
+\definecolor{wongGreen}{RGB}{0, 158, 115}
+\definecolor{wongYellow}{RGB}{240, 228, 66}
+\definecolor{wongBlue}{RGB}{0, 114, 178}
+\definecolor{wongOrange}{RGB}{213, 94, 0}
+\definecolor{wongPurple}{RGB}{204, 121, 167}
+\definecolor{colA}{RGB}{255, 221, 85}
+\definecolor{colB}{RGB}{148, 78, 223}
+\definecolor{colC}{RGB}{63, 179, 178}
+\definecolor{colGpeZero}{RGB}{127, 23, 14}
+\definecolor{colGpeUn}{RGB}{27, 149, 224}
+$$
+
+```{r graphs-settings}
+#| code-fold: true
+#| code-summary: Codes for graphical parameters.
+library(extrafont, quietly = TRUE)
+font_family <- "CMU Serif"
+
+
+path <- "./figs/"
+if (!dir.exists(path)) dir.create(path)
+```
+
+We load the functions that will allow us to build the counterfactuals (see @sec-functions):
+```{r source-functions}
+source("../scripts/functions.R")
+```
+
+
+## Data
+
+We load the COMPAS dataset that is available in the {mlr3fairness} package.
+
+```{r load-compas-data}
+data(compas, package = "mlr3fairness")
+```
+
+The outcome variable is binary here: whether the defendant is rearrested at any time. The "treatment" $A$ will be the sensitive attribute, `race`. We will consider a binary version of the race: `Caucasian` (whites, $A=0$) and `African-American` (Blacks, $A=1$). The idea is to build counterfactuals for Black people to ask questions such as "had this Black individual been white, what whould the prediction of an algorithm modeling recidivism be?".
+
+To train the predictive model of recidivism, we will use the following covariates: the age, the prior criminal records of defendants, and the charge degree (felony or misdemeanor).
+
+```{r define-tb}
+tb <- compas |> 
+  as_tibble() |> 
+  filter(race %in% c("Caucasian", "African-American")) |>
+  select(
+    race, # sensitive
+    age, 
+    priors_count, # The prior criminal records of defendants. 
+    c_charge_degree, # F: Felony M: Misdemeanor
+    is_recid # outcome
+  ) |> 
+  mutate(
+   race = ifelse(race == "African-American", 1, 0), # African-American as "treated"
+   is_recid = ifelse(is_recid == 0, 0, 1)
+  )
+  # working with a fraction of observations here (40%)
+```
+
+```{r show-summary-tb}
+dim(tb)
+summary(tb)
+```
+
+We assume the DAG shown in @fig-dag-compas.
+
+```{r}
+#| fig-cap: Assumed structural model for the probability of recidivism.
+#| label: fig-dag-compas
+variables <- c("race", 
+               "age", "priors_count", "c_charge_degree", 
+               "is_recid")
+# Row: outgoing arrow
+adj <- matrix(
+  # S  1  2  3  Y
+  c(0, 1, 1, 1, 1,# S
+    0, 0, 1, 2, 1,# 1 (age)
+    0, 0, 0, 0, 1,# 2 (priors_count)
+    0, 0, 0, 0, 1,# 3 (c_charge_degree)
+    0, 0, 0, 0, 0 # Y
+  ),
+  ncol = length(variables),
+  dimnames = rep(list(variables), 2),
+  byrow = TRUE
+)
+
+causal_graph <- fairadapt::graphModel(adj)
+plot(causal_graph)
+```
+
+## Counterfactuals
+
+Let us follow the DAG from @fig-dag-compas and build the counterfactuals of Black individuals: we thus transport individuals from $A=1$ to $A=0$. Let us set a seed for reproducibility.
+
+```{r}
+seed <- 1234
+set.seed(seed)
+```
+
+We call the  `seq_trans()`{.R} function (see [Chapter -@sec-functions]) function to build the counterfactuals of Black individuals. The estimations are done using parallel computation.
+
+```{r define-sequential_transport}
+library(pbapply)
+library(parallel)
+ncl <- detectCores()-1
+(cl <- makeCluster(ncl))
+
+clusterEvalQ(cl, {
+  library(transportsimplex)
+}) |>
+  invisible()
+
+
+A_name <- "race" # treatment name
+Y_name <- "is_recid" # outcome name
+
+sequential_transport <- seq_trans(
+  data = tb, 
+  adj = adj, 
+  s = A_name, 
+  S_0 = 1, # source: treated
+  y = Y_name, 
+  num_neighbors = 50, 
+  num_neighbors_q = NULL,
+  silent = FALSE,
+  cl = cl
+)
+
+stopCluster(cl)
+```
+## Measuring the Causal Effect
+
+### ATT with the Conditional Optimal Transport Approach
+
+Recall that the average treatment on the treated writes
+$$
+\text{ATT} = \mathbb{E}\bigl[Y(1) - Y(0) \mid A=1\bigr]
+$$
+
+For a treated unit $i$ (Black individual), $Y_i(1)$ corresponds to the observed value and $Y_i(0)$ to its counterfactual, i.e. $Y_i(0)\mid A=1 = x_{1,i}^\star$.
+
+$$
+\widehat{\text{ATT}}^{\text{COT}} = \frac{1}{n_1} \sum_{i:A_i=1}\bigl[ Y_i -  \hat{\mu}_0(x_{1,i}^\star)\bigr],
+$$ {#eq-att-cot}
+where $\hat{\mu}_0()$ is the predictive outcome model trained on the untreated (white individuals), i.e., an estimation of $\mu_0(\boldsymbol{X}_i) = \mathbb{E}[Y_i \mid \boldsymbol{X}_i, A_i = 0]$
+
+```{r define-A_untreated}
+A_untreated <- 0 # transport from 1 to 0
+```
+
+Let us split the data between treated (Black individuas) and untreated (white individuals).
+```{r define-tb_untreated}
+tb_untreated <- tb |> filter(!!sym(A_name) == !!A_untreated)
+tb_treated <- tb |> filter(!!sym(A_name) != !!A_untreated)
+
+n_untreated <- nrow(tb_untreated)
+n_treated <- nrow(tb_treated)
+```
+
+We train a random forest to predict recidivism, among the untreated only (white individuals): $\hat{\mu}_0()$.
+
+```{r define-mu_untreated_model}
+mu_untreated_model <- randomForest(
+  x = tb_untreated |> select(-!!Y_name, -!!A_name),
+  y = factor(pull(tb_untreated, !!Y_name), levels = c(0,1))
+)
+```
+
+The transported values for age, prior counts and charge degrees of all treated (Black individuals): $x_{1,i}^\star$
+```{r define-D_treated_t}
+tb_treated_t <- sequential_transport$transported |> 
+  as_tibble() |>
+  unnest_wider(where(is.list))
+```
+
+The prediction of the algorithm on those transported individuals, i.e., $\hat{\mu}_0(x_{1,i}^\star)$
+```{r define-pred_treated_t}
+pred_treated_t <- predict(mu_untreated_model, newdata = tb_treated_t)
+```
+
+We can then compute the ATT (@eq-att-cot).
+
+```{r}
+# ATT with the counterfactuals
+Y_treated_obs <- tb |> filter(!!sym(A_name) != !!A_untreated) |> pull(!!Y_name)
+ATT_cot <- mean(Y_treated_obs - ifelse(pred_treated_t == 0, 0, 1))
+ATT_cot
+```
+
+### ATT with the AIPW Estimator
+
+We use cross-fitting to estimate the average treatment on the treated using the AIPW estimator:
+$$
+\widehat{\text{ATT}}_{\text{AIPW}} = \frac{1}{n_1} \sum_{i: A_i = 1} \left[ Y_i - \hat{\mu}_0(X_i) \right] + \frac{1}{n_1} \sum_{i: A_i = 0} \frac{\hat{e}(X_i)}{1 - \hat{e}(X_i)} \left[ Y_i - \hat{\mu}_0(X_i) \right]
+$$
+
+where $\hat{e}\bigl(\boldsymbol{X}_i\bigr)$ is the estimation of the propensity score $e(X_i) = \mathbb{P}(A_i = 1 \mid \boldsymbol{X}_i)$.
+
+```{r define-e_hat}
+set.seed(seed)
+n <- n_untreated + n_treated
+n_folds <- 5 # 5-fold cross-fitting
+folds <- sample(rep(1:n_folds, length.out = n))
+# Init results
+## outcomes
+mu_untreated_hat <- rep(NA, n)
+mu_treated_hat <- rep(NA, n)
+## propensity scores
+e_hat  <- rep(NA, n)
+
+for (k in 1:n_folds) {
+  idx_valid <- which(folds == k)
+  idx_train <- setdiff(1:n, idx_valid)
+  tb_train <- tb |> slice(idx_train)
+  tb_valid <- tb |> slice(-idx_train)
+  # Outcome models
+  mu_untreated_model <- randomForest(
+    x = tb_train |> filter(!!sym(A_name) == !!A_untreated) |> 
+      select(-!!Y_name, -!!A_name),
+    y = tb_train |> filter(!!sym(A_name) == !!A_untreated) |> 
+      pull(!!Y_name) |> factor(levels = c(0, 1))
+  )
+  mu_treated_model <- randomForest(
+    x = tb_train |> 
+      filter(!!sym(A_name) != !!A_untreated) |> select(-!!Y_name, -!!A_name),
+    y = tb_train |> filter(!!sym(A_name) != !!A_untreated) |> 
+      pull(!!Y_name) |> factor(levels = c(0, 1))
+  )
+  
+  mu_untreated_hat[idx_valid] <- predict(
+    mu_untreated_model, newdata = tb_valid |> select(-!!Y_name, -!!A_name)
+  ) |> as.character() |> as.numeric()
+  mu_treated_hat[idx_valid] <- predict(
+    mu_treated_model, newdata = tb_valid |> select(-!!Y_name, -!!A_name)
+  ) |> as.character() |> as.numeric()
+  
+  # Propensity model
+  ps_model <- glm(
+    paste(A_name, " ~ ."), data = tb_train |> select(-!!Y_name),
+    family = binomial()
+  )
+  # Propensity scores
+  e_hat[idx_valid] <- predict(
+    ps_model, newdata = tb_valid, type = "response"
+  )
+}
+```
+
+For convenience, let us extract the treatment and the outcome:
+```{r define-treated_idx}
+A <- pull(tb, !!A_name)
+Y <- pull(tb, !!Y_name)
+# Index of treated
+treated_idx <- which(A != A_untreated)
+```
+
+Lastly, we can compute the ATT with the AIPW estimator:
+
+```{r define-ATT_aipw}
+aipw_terms <- A * (Y - mu_untreated_hat) +
+  (1 - A) * (e_hat / (1 - e_hat)) * (Y - mu_untreated_hat)
+ATT_aipw <- sum(aipw_terms[treated_idx]) / sum(A == 1)
+ATT_aipw
+```
+
+### ATT with a Causal Forest
+
+Let us apply a causal forest to estimate the ATT.
+
+First, we need to perform 1-hot encoding for categorical variables to comply with the requirements of the `causal_forest()`{R} from {grf}.
+```{r define-X_mat}
+# 1-hot-encoding
+X_mat <- tb |> select(-!!Y_name, -!!A_name)
+X_mat <- model.matrix(~ . - 1, data = X_mat)
+```
+
+We train the causal forest:
+```{r define)fit_cf}
+fit_cf <- causal_forest(
+  X = X_mat, 
+  Y = Y, 
+  W = A
+)
+```
+
+
+```{r define-ATT_dml}
+# the individual treatment effects
+tau_hat <- predict(fit_cf)$predictions
+# the ATT
+ATT_dml <- mean(tau_hat[treated_idx])
+ATT_dlm_se <- sqrt(var(tau_hat[treated_idx]) / n_treated)
+
+# This can also be obtained as follows:
+# average_treatment_effect(fit_cf, target.sample = "treated")
+
+# The ATT:
+ATT_dml
+```
+
+### Summary
+
+```{r}
+tibble(ATT_cot = ATT_cot, ATT_aipw = ATT_aipw, ATT_dml = ATT_dml)
+```
+

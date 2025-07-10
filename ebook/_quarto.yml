@@ -11,12 +11,20 @@ book:
     - part: I. Introduction
       chapters:
         - gaussian-example.qmd
-    - part: II. Sequential Transport for General Data
+    - part: II. Functions for Illustrations
+      chapters:
+        - utils.qmd
+        - functions.qmd
+    - part: III. Sequential Transport for General Data
       chapters:
         - transp-categ.qmd
         - barycentric.qmd
         - transport-categ-toy.qmd
         - transport-gaussian-local-weights.qmd
+    - part: IV. Experiments
+      chapters:
+        - xp-simulated.qmd
+        - xp-compas.qmd
     - references.qmd
   navbar:
     right:
