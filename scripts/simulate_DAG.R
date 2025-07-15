@@ -11,9 +11,9 @@
 #  node("X1", type="gaussian", parents=c("S"), 
 #       betas=c(1.1), intercept=1, error=.5) +
 #  node("X2", type="gaussian", parents=c("S", "X1"), betas=c(0.1, 0.3), intercept=-2, error=.5) #+
-  #node("X3", type="multinomial", parents=c("S", "X1", "X2"),
-  #     betas=matrix(c(0.2, 0.4, 0.1), ncol=3), intercepts=1,
-  #     output = "factor") # ncol for categ nb
+#node("X3", type="multinomial", parents=c("S", "X1", "X2"),
+#     betas=matrix(c(0.2, 0.4, 0.1), ncol=3), intercepts=1,
+#     output = "factor") # ncol for categ nb
 
 #plot(dag) # to get the causal graph
 #summary(dag) # to get the equations
@@ -34,9 +34,11 @@ library(R6causal)
 multinomial_sample <- function(S, X1, X2, U) {
   # Linear predictors for each category (logits)
   logits <- matrix(
-    data = c(0.1 + 0.3 * S + 0.2 * X1 + 0.1 * X2 + U,
-    -0.2 + 0.1 * S - 0.1 * X1 + 0.4 * X2 + U,
-    rep(0, length(S))),  # reference category baseline,
+    data = c(
+      0.1 + 0.3 * S + 0.2 * X1 + 0.1 * X2 + U,
+      -0.2 + 0.1 * S - 0.1 * X1 + 0.4 * X2 + U,
+      rep(0, length(S))
+    ),  # reference category baseline,
     nrow = length(S),
     ncol = 3
   )
@@ -49,23 +51,21 @@ multinomial_sample <- function(S, X1, X2, U) {
 }
 
 # Background variables have gaussian dist. --> exogeneous variables
-model <- SCM$new(name = "simple SCM",
-                      uflist = list(
-                        us = function(n) {return(rnorm(n))},
-                        ux1 = function(n) {return(rnorm(n))},
-                        ux2 = function(n) {return(rnorm(n))},
-                        ux3 = function(n) {return(rnorm(n))}
-                      ),
-                      vflist = list(
-                        s = function(us) {
-                          return(as.numeric(us < 0.4))},
-                        x1 = function(ux1, s) {
-                          return(as.numeric(-2 + 0.5*s + ux1))},
-                        x2 = function(ux2, s, x1) {
-                          return(as.numeric(1 + 0.4*s + 0.4*x1 + ux2))},
-                        x3 = function(ux3, s, x1, x2) {
-                          return(multinomial_sample(s, x1, x2, ux3))}
-                      ))
+model <- SCM$new(
+  name = "simple SCM",
+  uflist = list(
+    us  = function(n) {return(rnorm(n))},
+    ux1 = function(n) {return(rnorm(n))},
+    ux2 = function(n) {return(rnorm(n))},
+    ux3 = function(n) {return(rnorm(n))}
+  ),
+  vflist = list(
+    s  = function(us) {return(as.numeric(us < 0.4))},
+    x1 = function(ux1, s) {return(as.numeric(-2 + 0.5*s + ux1))},
+    x2 = function(ux2, s, x1) {return(as.numeric(1 + 0.4*s + 0.4*x1 + ux2))},
+    x3 = function(ux3, s, x1, x2) {return(multinomial_sample(s, x1, x2, ux3))}
+  )
+)
 
 model$plot()
 model$simulate(n = 100, seed = 1234)
