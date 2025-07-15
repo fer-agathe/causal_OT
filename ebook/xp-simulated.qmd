@@ -285,7 +285,7 @@ plot(causal_graph)
 
 
 
-Let us follow this DAGand build the counterfactuals of `colorize("treated", colours[1])`: we thus transport individuals from $A=1$ to $A=0$. Let us set a seed for reproducibility.
+Let us follow this DAGand build the counterfactuals of `r colorize("treated", colours[["1"]])`: we thus transport individuals from $A=1$ to $A=0$. Let us set a seed for reproducibility.
 
 ```{r}
 seed <- 1234
@@ -366,15 +366,15 @@ Y_1_cf <- tb |> filter(!!sym(A_name) != !!A_untreated) |> pull(Y_cf)
 
 ### ATT with the Conditional Optimal Transport Approach {#sec-att-cot}
 
-For a `colorize("treated", colours[1])` unit $i$, $Y_i(1)$ corresponds to the observed value and $Y_i(0)$ to its counterfactual, i.e. the transported value: $Y_i(0)\mid A=1 = x_{1,i}^\star$.
+For a `r colorize("treated", colours[["1"]])` unit $i$, $Y_i(1)$ corresponds to the observed value and $Y_i(0)$ to its counterfactual, i.e. the transported value: $Y_i(0)\mid A=1 = x_{1,i}^\star$.
 
 $$
 \widehat{\text{ATT}}^{\text{COT}} = \frac{1}{n_1} \sum_{i:A_i=1}\bigl[ Y_i -  \hat{\mu}_0(x_{1,i}^\star)\bigr],
 $$ {#eq-att-cot}
-where $\hat{\mu}_0()$ is the predictive outcome model trained on the `colorize("untreated", colours[0])`, i.e., an estimation of $\mu_0(\boldsymbol{X}_i) = \mathbb{E}[Y_i \mid \boldsymbol{X}_i, A_i = 0]$
+where $\hat{\mu}_0()$ is the predictive outcome model trained on the `r colorize("untreated", colours[["0"]])`, i.e., an estimation of $\mu_0(\boldsymbol{X}_i) = \mathbb{E}[Y_i \mid \boldsymbol{X}_i, A_i = 0]$
 
 
-Let us split the data between `colorize("treated", colours[1])` and `colorize("untreated", colours[0])`
+Let us split the data between `r colorize("treated", colours[["1"]])` and `r colorize("untreated", colours[["0"]])`
 ```{r define-tb_untreated}
 tb_untreated <- tb |> filter(!!sym(A_name) == !!A_untreated) |> 
   select(all_of(!!colnames(adj))) |> 
@@ -386,7 +386,7 @@ n_untreated <- nrow(tb_untreated)
 n_treated <- nrow(tb_treated)
 ```
 
-We train a random forest to predict the outcome $Y$, among the `r colorize("untreated", colours[0])` only: $\hat{\mu}_0()$.
+We train a random forest to predict the outcome $Y$, among the `r colorize("untreated", colours[["0"]])` only: $\hat{\mu}_0()$.
 
 ```{r define-mu_untreated_model}
 mu_untreated_model <- randomForest(
@@ -395,7 +395,7 @@ mu_untreated_model <- randomForest(
 )
 ```
 
-The transported values for $X_1$, $X_2$, and $X_3$ of all `r colorize("treated", colours[1])` ($A=1$): $x_{1,i}^\star$
+The transported values for $X_1$, $X_2$, and $X_3$ of all `r colorize("treated", colours[["1"]])` ($A=1$): $x_{1,i}^\star$
 ```{r define-D_treated_t}
 tb_treated_t <- sequential_transport$transported |> 
   as_tibble() |>
@@ -418,7 +418,7 @@ ATT_cot
 
 ### ATT with the AIPW Estimator {#sec-att-aipw}
 
-We use cross-fitting to estimate the average treatment on the `colorize("treated", colours[1])` using the AIPW estimator:
+We use cross-fitting to estimate the average treatment on the `r colorize("treated", colours[["1"]])` using the AIPW estimator:
 $$
 \widehat{\text{ATT}}_{\text{AIPW}} = \frac{1}{n_1} \sum_{i: A_i = 1} \left[ Y_i - \hat{\mu}_0(X_i) \right] + \frac{1}{n_1} \sum_{i: A_i = 0} \frac{\hat{e}(X_i)}{1 - \hat{e}(X_i)} \left[ Y_i - \hat{\mu}_0(X_i) \right]
 $$
@@ -539,7 +539,15 @@ tibble(
 
 # Monte Carlo Experiment
 
-We run Monte-Carlo simulations to reproduce the previous steps. In each of the 200 iteration, we draw some data according to the DGP presented in @sec-dgp. Then, we use the `seq_trans()`{.R} function (see [Chapter -@sec-functions]) to perform sequential conditional transport to transport individuals from the `r colorize("treated group", colours[1])` ($A=1$) to the `r colorize("untreated group", colours[0])` ($A=0$).
+We run Monte-Carlo simulations to reproduce the previous steps. In each of the 200 iteration, we draw some data according to the DGP presented in @sec-dgp. Then, we use the `seq_trans()`{.R} function (see [Chapter -@sec-functions]) to perform sequential conditional transport to transport individuals from the `r colorize("treated group", colours[["1"]])` ($A=1$) to the `r colorize("untreated group", colours[["0"]])` ($A=0$).
+
+We set the seeds for each replication and we define placeholders.
+```{r define-res_ATT}
+seeds <- 1:200
+res_simul <- vector(mode = "list", length = length(seeds))
+res_ATT <- vector(mode = "list", length = length(seeds))
+```
+
 
 ```{r, eval=FALSE}
 # This chunk is not evaluated.
@@ -553,11 +561,6 @@ clusterEvalQ(cl, {
   library(transportsimplex)
 }) |>
   invisible()
-
-seeds <- 1:200
-res_simul <- vector(mode = "list", length = length(seeds))
-res_ATT <- vector(mode = "list", length = length(seeds))
-
 
 for (i in 1:length(seeds)) {
   cat(paste0("Simulation ", i, "/", length(seeds), "\n"))
@@ -702,16 +705,17 @@ We load previously run simulations:
 load("../output/res_simul.rda")
 ```
 
+We can have a look at the result of the first run to show, on a ternary plot (@fig-ternary-simul-1), the `r colorize("transported variable $X_3$", colours[["B"]])` from group 1 to group 0.
 
 ```{r}
 #| code-fold: true
 #| code-summary: Codes to create the Figure.
-#| fig-cap: test
-#| label: fig-test1
+#| fig-cap: !expr glue::glue("$X_3$ values for individuals from <span style='color:{c0};'>group 0</span>, those from <span style='color:{c1};'>group 1</span>, and those <span style='color:{c2};'>transported</span> from group 1 to group 0 using sequential transport.", c0 = colours[["0"]], c1 = colours[["1"]], c2 = colours[["B"]])
+#| label: fig-ternary-simul-1
 #| warning: false
 #| message: false
 library(ggtern)
-i <- 2
+i <- 1
 ggtern(
   data = gen_data(i) |> select(A, X3_p_A,X3_p_B, X3_p_C) |> 
     mutate(A = as.character(A)) |> 
@@ -754,18 +758,21 @@ ATT <- list_rbind(res_ATT)
 ```
 
 
-```{r, eval=FALSE}
+The distribution of the estimated ATT on the 200 runs of the Monte-Carlo experiment are reported in @fig-simul-mc-att.
+
+
+```{r}
 #| code-fold: true
 #| code-summary: Codes to create the Figure.
-#| fig-cap: test2
-#| label: fig-test2
+#| fig-cap: !expr glue::glue("Average treatment effect on the treated, {n} replications.", n = length(seeds))
+#| label: fig-simul-mc-att
 ggplot(
   data = ATT |> pivot_longer(cols = -seed) |> 
     mutate(
       name = factor(
         name,
         levels = c("ATT_true", "ATT_aipw", "ATT_dml", "ATT_cot"),
-        labels = c("True", "AIPW", "DML", "COT")
+        labels = c("True", "AIPW", "Causal Forests", "COT")
       )
     ),
   mapping = aes(x = value, y = name)
@@ -774,13 +781,14 @@ ggplot(
     mapping = aes(fill = name), 
     draw_quantiles = c(0.25, 0.5, 0.75)) +
   scale_fill_manual(
-    "ATT", 
+    NULL,
     values = c(
       "True" = "#E69F00", "AIPW" = "#56B4E9", 
-      "DML" = "#D55E00", "COT" = "#009E73"
+      "Causal Forests" = "#D55E00", "COT" = "#009E73"
     )
   ) +
-  labs(y = NULL, title = "ATT (simulated data, 50 replications)") +
-  theme_paper()
+  labs(y = NULL) +
+  theme_paper() +
+  theme(legend.position = "bottom")
 ```
 

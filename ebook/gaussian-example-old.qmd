@@ -83,9 +83,9 @@ We want to simulate potential outcomes in a binary treatment setting, with covar
 
 Let $n=500$ denote the number of individuals (or unit), and let $\boldsymbol{X}=(X_1,X_2)$ be drawn from bivariate normal distrubtions whose mean vectors and covariance matrices depend on the treatment assignment $A\in\{0,1\}$. 
 
-For `r colorize("untreated individuals", colGpe0)` ($A=\color{colGpe0}0$) the covariates $\boldsymbol{X}^{(0)} = (X_1{(0)}, X_2{(0)})$ are sampled from a $\mathcal{N}(\mu_0, \Sigma_0)$, where $\mu_0 = -1$, $\Sigma_0 = \begin{pmatrix} 1 & r_0 \\ r_0 & 1 \end{pmatrix}$ with $r_0 = 0.7$.
+For `r colorize("untreated individuals", colGpe0)` ($A=\color{colGpe0}0$) the covariates $\boldsymbol{X}^{(0)} = (X_1^{(0)}, X_2^{(0)})$ are sampled from a $\mathcal{N}(\mu_0, \Sigma_0)$, where $\mu_0 = -1$, $\Sigma_0 = \begin{pmatrix} 1 & r_0 \\ r_0 & 1 \end{pmatrix}$ with $r_0 = 0.7$.
 
-For `r colorize("treated individuals", colGpe1)` ($A=\color{colGpe1}1$), covariates $\boldsymbol{X}{(1)} = (X_1{(1)}, X_2{(1)})$ follow a $\mathcal{N}(\mu_1, \Sigma_1)$, where $\mu_1 = +1$, $\Sigma_1 = \begin{pmatrix} 1 & r_1 \\ r_1 & 1 \end{pmatrix}$ with $r_1 = -0.5$. 
+For `r colorize("treated individuals", colGpe1)` ($A=\color{colGpe1}1$), covariates $\boldsymbol{X}^{(1)} = (X_1^{(1)}, X_2^{(1)})$ follow a $\mathcal{N}(\mu_1, \Sigma_1)$, where $\mu_1 = +1$, $\Sigma_1 = \begin{pmatrix} 1 & r_1 \\ r_1 & 1 \end{pmatrix}$ with $r_1 = -0.5$. 
 
 
 The treatment assignment $A$ is randomized with probability $p_1 = 0.5$.
@@ -103,67 +103,17 @@ where $\varepsilon \sim \mathcal{N}(0, 1)$ and $a_0 = 3$, $a_1 = 2$, $a_2 = -1.5
 The observed outcome is 
 $$Y = A \cdot Y(1) + (1 - A) \cdot Y(0).$$ 
 
-:::{.callout-note}
-
-### Causal Mediation Effect (@imai2010identification)
-
-The causal mediation effect for the $i$th individual writes:
-
+We will focus on the average treatment effect of the treated:
 $$
-\delta_i{(a)} \equiv Y_i{\bigl(a, X_i{(1)}\bigr)} - Y_i{\bigl(a, X_i{(0)}\bigr)}, \quad \text{for } a={0,1},
+\begin{aligned}
+\text{ATT}
+&= \mathbb{E}\bigl[Y(1)-Y(0)\mid A=1\bigr] \\
+&= a_0 \\
+&= 3.
+\end{aligned}
 $$
-where $Y_i{\bigl(a, X_i{(1)}\bigr)}$ is the potential outcome under treatment $a$ with mediator values $ X_i{(1)}$ and $Y_i{\bigl(a, X_i{(0)}\bigr)}$ is the potential outcome also under treatment $a$ with mediator values $X_i^{(0)}$.
 
-@pearl2001 refers to $\delta_i{(a)}$ as the natural indirect effect.
-
-:::
-
-
-As noted by @imai2010identification, under treatment status $a$, we only observe $X_i{(1-a)}$ and we never observe $X_i{(1-a)}$. Using optimal transport, we will build the unobserved value, the counterfactual.
-
-:::{.callout-note}
-
-### Average Causal Mediation Effect (ACME) (@imai2010identification)
-
-The average causal mediation effects writes:
-
-$$
-\begin{align*}
-\bar{\delta}{(a)} & \equiv \mathbb{E}\bigl[\delta_i{(a)}\bigr]\\
-& = \mathbb{E}\bigl[ Y_i{(a,X_i{(1)})} - Y_i{(a, X_i{(0)})} \bigr]
-\end{align*}
-$$ {#eq-acme}
-:::
-
-
-:::{.callout-note}
-
-### Natural Direct Effect (@pearl2001, @imai2010identification)
-
-The natural direct effect writes:
-$$
-\zeta_i{(a)} = Y_i{(1,X_i{(a)})} - Y_i{(0, X_i{(a)})}, \quad a=0,1.
-$$ {#eq-nde}
-
-Hence, it represents the direct effect of the treatment for a given level of the mediator.
-
-:::
-
-
-:::{.callout-note}
-
-### Total Causal Effect (@imai2010identification)
-
-The total causal effect is given by
-$$
-\tau_i = \delta_i{(a)} +\zeta_i^{(a)} (1-a), \quad a=0,1.
-$$ {#eq-tce}
-
-:::
-
-
-
-```{r generate-first-example}
+```{r}
 set.seed(12345)
 # Parameters
 n <- 500
@@ -255,6 +205,30 @@ gen_data <- function(n = 500,
 
 
 ## A Closer Look at Overlapping
+
+
+When the estimation of the ATT is done using the AIPW estimator, the procedure requires a propensity-score model:
+$$e(X) = \mathbb{P}(A = 1 \mid X),$$
+and an outcome regression for the untreated potential outcome:
+$$\mu_0(\boldsymbol{X}) = \mathbb{E}[Y \mid \boldsymbol{X}, A = 0].$$
+
+The ATT is then estimated as follows:
+$$
+\widehat{\text{ATT}}_{\text{AIPW}} = \frac{1}{n_1} \sum_{i: A_i = 1} \left[ Y_i - \hat{\mu}_0(X_i) \right] + \frac{1}{n_1} \sum_{i: A_i = 0} \frac{\hat{e}(X_i)}{1 - \hat{e}(X_i)} \left[ Y_i - \hat{\mu}_0(X_i) \right]
+$$ {#eq-aipw}
+
+The first term imputes the counterfactual outcome for treated units, whereas the second corrects any residual bias by re-weighting control residuals. 
+
+Consistency holds if either the propensity-score model or the outcome model is correctly specified (known as the estimator's double robustness).
+
+For every covariate pattern represented among treated units, the identification assumption is required:
+$$0 < \mathbb{P}(A = 1 \mid X) < 1$$
+This assumption ensures an adequate overlap and prevents infinite weights.
+
+In finite samples, extreme estimated propensities ($\hat{e}(\boldsymbol{X})\approx 0$ or $\hat{e}(\boldsymbol{X})\approx 1$) lead to inflated variance. A common practice is then to introduce a trimming rule that discards observations with $\hat{e}(\boldsymbol{X})$ outside a pre-specified interval. Common values are $[0.05;0.95]$ or $[0.01;0.99]$.
+
+Here, we want to have a closer look at what happens when trimming.
+
 
 Let us consider two examples:
 
@@ -463,7 +437,7 @@ dev.off()
 
 ## Counterfactuals
 
-Let us build counterfactuals for individuals from `r colorize("group 0", colGpe0)`. We will consider the following methods:
+Let us build counterfactuals for individuals from `r colorize("group 1", colGpe1)`. We will consider the following methods:
 
 - Multivariate Optimal Transport (since we know the parameters of the two Gaussians),
 - Sequential Optimal Transport.
@@ -474,14 +448,14 @@ Let us build counterfactuals for individuals from `r colorize("group 0", colGpe0
 library(expm)
 ```
 
-The optimal transport map $T(x)$ from $\mathcal{N}(\boldsymbol{\mu}_0, \boldsymbol{\Sigma}_0)$ to
-$\mathcal{N}(\boldsymbol{\mu}_1, \boldsymbol{\Sigma}_1)$ is:
-$$T(x) = \boldsymbol{\mu}_1 + \boldsymbol{A}(x - \boldsymbol{\mu}_0)$$
+The optimal transport map $T(x)$ from $\mathcal{N}(\mu_0, \Sigma_0)$ to
+$\mathcal{N}(\mu_1, \Sigma_1)$ is:
+$$T(x) = \mu_1 + A(x - \mu_0)$$
 where:
 $$
- \boldsymbol{A} = \boldsymbol{\Sigma}_0^{1/2} 
-       \left( \boldsymbol{\Sigma}_0^{1/2} \boldsymbol{\Sigma}_1 \boldsymbol{\Sigma}_0^{1/2} \right)^{-1/2}
-      \boldsymbol{\Sigma}_0^{1/2}
+ A = \Sigma_1^{1/2} 
+       \left( \Sigma_1^{1/2} \Sigma_0 \Sigma_1^{1/2} \right)^{-1/2}
+      \Sigma_1^{1/2}
 $$
 
 We define the function `compute_ot_map()`{.R} to compute the optimal mapping.
@@ -497,12 +471,10 @@ We define the function `compute_ot_map()`{.R} to compute the optimal mapping.
 #' @param sigma1 Variance-covariance matrix of the bivariate Gaussian in group 1.
 compute_ot_map <- function(mu0, sigma0, mu1, sigma1) {
   
-  sqrt_sigma0 <- sqrtm(sigma0)
-  sqrt_sigma0_inv <- solve(sqrt_sigma0)
-  inner <- sqrt_sigma0 %*% sigma1 %*% sqrt_sigma0
-  sqrt_inner <- sqrtm(inner)
-
-  A <- sqrt_sigma0_inv %*% sqrt_inner %*% sqrt_sigma0_inv
+  sqrt_sigma1 <- sqrtm(sigma1)
+  inner <- sqrt_sigma1 %*% sigma0 %*% sqrt_sigma1
+  sqrt_inner_inv <- solve(sqrtm(inner))
+  A <- sqrt_sigma1 %*% sqrt_inner_inv %*% sqrt_sigma1
   
   list(A = A, shift = mu1 - A %*% mu0)
 }
@@ -529,15 +501,15 @@ Sigma0 <- matrix(c(1, r0, r0, 1), 2, 2)
 Sigma1 <- matrix(c(1, r1, r1, 1), 2, 2)
 Mu0 <- rep(a * mu0, 2)
 Mu1 <- rep(a * mu1, 2)
-ot_map <- compute_ot_map(mu0 = Mu0, sigma0 = Sigma0, mu1 = Mu1, sigma1 = Sigma1)
+ot_map <- compute_ot_map(mu0 = Mu1, sigma0 = Sigma1, mu1 = Mu0, sigma1 = Sigma0)
 ```
 
-We apply the transport map to the `r colorize("untreated units", colGpe0)` (A = 0)
+We apply the transport map to the `r colorize("treated units", colGpe1)` (A = 1)
 
 ```{r}
-X0 <- as.matrix(df[df$A == 0, c("X1", "X2")])
-X0_t <- apply_ot_transport(X = X0, mapping = ot_map)
-colnames(X0_t) <- c(c("X1", "X2"))
+X1 <- as.matrix(df[df$A == 1, c("X1", "X2")])
+X1_t <- apply_ot_transport(X = X1, mapping = ot_map)
+colnames(X1_t) <- c(c("X1", "X2"))
 ```
 
 Let us visualize the transported individuals. First, we define the function `draw_ellipse()`{.R} which will allow us to plot the 95% confidence ellipse in both groups.
@@ -574,7 +546,7 @@ The initial points and the `r colorize("transported values", colGpet)` are shown
 ```{r}
 #| code-fold: true
 #| code-summary: Codes to create the Figure.
-#| fig-cap: !expr glue::glue("500 points in each group drawn from bivariates Gaussian distributions and <span style='color:{c2};'>transported values</span> from <span style='color:{c0};'>group 0</span> to <span style='color:{c1};'>group 1</span>, using optimal transport.", c0 = colGpe0, c1 = colGpe1, c2 = colGpet)
+#| fig-cap: !expr glue::glue("500 points in each group drawn from bivariates Gaussian distributions and <span style='color:{c2};'>transported values</span> from <span style='color:{c1};'>group 1</span> to <span style='color:{c0};'>group 0</span>, using optimal transport.", c0 = colGpe0, c1 = colGpe1, c2 = colGpet)
 #| label: fig-gaussian-ot
 #| warning: false
 #| message: false
@@ -592,12 +564,12 @@ plot(X0,
 )
 title(xlab = "X1", ylab="X2", line=2, cex.lab=1.2, family = font_family)
 points(X1, col = adjustcolor(colGpe1, alpha = .3), pch = 16)
-points(X0_t, col = adjustcolor(colGpet, alpha = .3), pch = 17)
+points(X1_t, col = adjustcolor(colGpet, alpha = .3), pch = 17)
 
 # Add arrows from original to transported
 arrows(
-  x0 = X0$X1, y0 = X0$X2,
-  x1 = X0_t[, 1], y1 = X0_t[, 2],
+  x0 = X1$X1, y0 = X1$X2,
+  x1 = X1_t[, 1], y1 = X1_t[, 2],
   length = 0.05, col = adjustcolor("gray", alpha = .3)
 )
 
@@ -608,17 +580,17 @@ Sig0 <- matrix(c(1, r0, r0, 1), 2, 2)
 Sig1 <- matrix(c(1, r1, r1, 1), 2, 2)
 
 # Covariance of transported points (via OT map)
-Sigma0_transport <- ot_map$A %*% Sig0 %*% t(ot_map$A)
+Sigma1_transport <- ot_map$A %*% Sig1 %*% t(ot_map$A)
 
 # Add ellipses
 draw_ellipse(Mu0, Sig0, col = colGpe0, lty = 2)
 draw_ellipse(Mu1, Sig1, col = colGpe1, lty = 2)
-draw_ellipse(Mu1, Sigma0_transport, col = colGpet, lty = 2)
+draw_ellipse(Mu0, Sigma1_transport, col = colGpet, lty = 2)
 ```
 
 ### Sequential Transport
 
-We will now transport individuals from `r colorize("group 0", colGpe0)` to `r colorize("group 1", colGpe1)` using sequential transport. The results are sensitive to the ordering within the sequence. We will thus consider both ordering here:
+We will now transport individuals from `r colorize("group 1", colGpe1)` to `r colorize("group 0", colGpe0)` using sequential transport. The results are sensitive to the ordering within the sequence. We will thus consider both ordering here:
 
 - a first marginal univariate optimal transport along the first dimension ($X_1$), then a conditional transport for the second dimension ($X_2 \mid X_1)$: `sequential_transport_12()`{.R},
 - a first marginal univariate optimal transport along the second dimension ($X_2$), then a conditional transport for the first dimension ($X_1 \mid X_2)$: `sequential_transport_21()`{.R},
@@ -709,27 +681,27 @@ X1 <- as.matrix(df[df$A == 1, c("X1", "X2")])
 ```
 
 
-We then transport from `r colorize("group 0", colGpe0)` to group `r colorize("group 1", colGpe1)` with sequential transport, first transporting $X_1$ then $X_2 | X_1$.
+We then transport from `r colorize("group 1", colGpe1)` to group `r colorize("group 0", colGpe0)` with sequential transport, first transporting $X_1$ then $X_2 | X_1$.
 
 
 ```{r define-X1_st_12}
-X0_st_12 <- sequential_transport_12(
-  X = X0, M_source = Mu0, S_source = Sig0, M_target = Mu1, S_target = Sig1
+X1_st_12 <- sequential_transport_12(
+  X = X1, M_source = Mu1, S_source = Sig1, M_target = Mu0, S_target = Sig0
 )
 ```
 
 :::{.callout-warning}
 
-Since we want to build counterfactuals for individuals from `r colorize("group 0", colGpe0)` (A=0), the source distribution is indeed that of the units in `r colorize("group 0", colGpe0)` and the target distribution in that of the units in  `r colorize("group 1", colGpe1)`.
+Since we want to build counterfactuals for individuals from `r colorize("group 1", colGpe1)` (A=1), the source distribution is indeed that of the units in `r colorize("group 1", colGpe1)` and the target distribution in that of the units in  `r colorize("group 0", colGpe0)`.
 
 :::
 
 
-We also transport from `r colorize("group 0", colGpe0)` to group `r colorize("group 1", colGpe1)` with sequential transport, first transporting $X_1$ then $X_1 | X_2$.
+We also transport from `r colorize("group 1", colGpe1)` to group `r colorize("group 0", colGpe0)` with sequential transport, first transporting $X_0$ then $X_1 | X_2$.
 
 ```{r define-X1_st_21}
-X0_st_21 <- sequential_transport_21(
-  X = X0, M_source = Mu0, S_source = Sig0, M_target = Mu1, S_target = Sig1
+X1_st_21 <- sequential_transport_21(
+  X = X1, M_source = Mu1, S_source = Sig1, M_target = Mu0, S_target = Sig0
 )
 ```
 
@@ -738,7 +710,7 @@ Again, we can visualize the results on a scatter plot (@fig-gaussian-seq-ot-x1-x
 ```{r}
 #| code-fold: true
 #| code-summary: Codes to create the Figure.
-#| fig-cap: !expr glue::glue("500 points in each group drawn from bivariates Gaussian distributions and <span style='color:{c2};'>transported values</span> from <span style='color:{c0};'>group 0</span> to <span style='color:{c1};'>group 1</span>, using sequential optimal transport, first transporting $X_1$, then $X_2 \\mid X_1$.", c0 = colGpe0, c1 = colGpe1, c2 = colGpet)
+#| fig-cap: !expr glue::glue("500 points in each group drawn from bivariates Gaussian distributions and <span style='color:{c2};'>transported values</span> from <span style='color:{c1};'>group 1</span> to <span style='color:{c0};'>group 0</span>, using sequential optimal transport, first transporting $X_1$, then $X_2 \\mid X_1$.", c0 = colGpe0, c1 = colGpe1, c2 = colGpet)
 #| label: fig-gaussian-seq-ot-x1-x2
 #| warning: false
 #| message: false
@@ -763,12 +735,12 @@ plot(
 title(xlab = "X1", ylab="X2", line=2, cex.lab=1.2, family = font_family)
 title(main = "X1 then X2", line=.5, cex.lab=1.2, family = font_family)
 points(X1, col = adjustcolor(colGpe1, alpha = .3), pch = 16)
-points(X0_st_12, col = adjustcolor(colGpet, alpha = .3), pch = 17)
+points(X1_st_12, col = adjustcolor(colGpet, alpha = .3), pch = 17)
 
 # Add arrows from original to transported
 arrows(
-  x0 = X0$X1, y0 = X0$X2,
-  x1 = X0_st_12[, 1], y1 = X0_st_12[, 2],
+  x0 = X1$X1, y0 = X1$X2,
+  x1 = X1_st_12[, 1], y1 = X1_st_12[, 2],
   length = 0.05, col = adjustcolor("gray", alpha = .3)
 )
 
@@ -795,12 +767,12 @@ plot(
 title(xlab = "X1", ylab="X2", line=2, cex.lab=1.2, family = font_family)
 title(main = "X2 then X1", line=.5, cex.lab=1.2, family = font_family)
 points(X1, col = adjustcolor(colGpe1, alpha = .3), pch = 16)
-points(X0_st_21, col = adjustcolor(colGpet, alpha = .3), pch = 17)
+points(X1_st_21, col = adjustcolor(colGpet, alpha = .3), pch = 17)
 
 # Add arrows from original to transported
 arrows(
-  x0 = X0$X1, y0 = X0$X2,
-  x1 = X0_st_21[, 1], y1 = X0_st_21[, 2],
+  x0 = X1$X1, y0 = X1$X2,
+  x1 = X1_st_21[, 1], y1 = X1_st_21[, 2],
   length = 0.05, col = adjustcolor("gray", alpha = .3)
 )
 
@@ -811,7 +783,7 @@ draw_ellipse(Mu1, Sig1, col = colGpe1, lty = 2)
 
 ## Causal Effect
 
-We first generate (again) some data, using the DGP presented in @sec-dgp.
+Let us now estimate the ATT with different methods. We first generate (again) some data, using the DGP presented in @sec-dgp.
 
 ```{r gen-data-2}
 df <- gen_data(
@@ -823,6 +795,311 @@ df <- gen_data(
 ```
 
 
+### With the AIPW Estimator
+
+
+Let us create a dataset, `tb`, with only the binary response (Y), the binary treatment (A), and the two covariates.
+
+```{r}
+tb <- df[, c("Y", "A", "X1", "X2")]
+A_name <- "A"
+A_untreated <- 0
+Y_name <- "Y"
+```
+
+We will estimate the outcome model with a random forest, and the propensity score with a logistic model. We use 5-fold cross-fitting.
+
+```{r}
+#| message: false
+#| warning: false
+library(randomForest)
+```
+
+We define a function, `estim_aipw()`{.R} that train the models, computes the ATT and then returns a list with the estimated ATT and the popensity scores.
+```{r define-estim_aipw}
+#' @param data Dataset with the units.
+#' @param Y_name Name of the column with the outcome variable.
+#' @param A_name Name of the column with the treatment variable.
+#' @param A_untreated Value of the treatment for the untreated units.
+#' @param n_folds Number of folds for cross-fitting.
+estim_aipw <- function(data,
+                       Y_name,
+                       A_name,
+                       A_untreated,
+                       n_folds = 5,
+                       seed = NULL) {
+  
+  if (!is.null(seed)) set.seed(seed)
+  
+  tb_untreated <- data |> filter(!!sym(A_name) == !!A_untreated)
+  tb_treated <- data |> filter(!!sym(A_name) != !!A_untreated)
+  
+  n_untreated <- nrow(tb_untreated)
+  n_treated <- nrow(tb_treated)
+  n <- n_untreated + n_treated
+  folds <- sample(rep(1:n_folds, length.out = n))
+  
+  # Init results
+  ## outcomes
+  mu_untreated_hat <- rep(NA, n)
+  mu_treated_hat <- rep(NA, n)
+  ## propensity scores
+  e_hat  <- rep(NA, n)
+  
+  for (k in 1:n_folds) {
+    idx_valid <- which(folds == k)
+    idx_train <- setdiff(1:n, idx_valid)
+    tb_train <- data |> slice(idx_train)
+    tb_valid <- data |> slice(-idx_train)
+    # Outcome models
+    mu_untreated_model <- randomForest(
+      x = tb_train |> filter(!!sym(A_name) == !!A_untreated) |> 
+        select(-!!Y_name, -!!A_name),
+      y = tb_train |> filter(!!sym(A_name) == !!A_untreated) |> pull(!!Y_name)
+    )
+    mu_treated_model <- randomForest(
+      x = tb_train |> 
+        filter(!!sym(A_name) != !!A_untreated) |> select(-!!Y_name, -!!A_name),
+      y = tb_train |> filter(!!sym(A_name) != !!A_untreated) |> pull(!!Y_name)
+    )
+    
+    mu_untreated_hat[idx_valid] <- predict(
+      mu_untreated_model, newdata = tb_valid |> select(-!!Y_name, -!!A_name)
+    )
+    mu_treated_hat[idx_valid] <- predict(
+      mu_treated_model, newdata = tb_valid |> select(-!!Y_name, -!!A_name)
+    )
+    
+    # Propensity model
+    ps_model <- glm(
+      paste(A_name, " ~ ."), data = tb_train |> select(-!!Y_name),
+      family = binomial()
+    )
+    # Propensity scores
+    e_hat[idx_valid] <- predict(
+      ps_model, newdata = tb_valid, type = "response"
+    )
+  }
+  
+  A <- pull(data, !!A_name)
+  Y <- pull(data, !!Y_name)
+  # Index of treated
+  treated_idx <- which(A != A_untreated)
+  
+  aipw_terms <- A * (Y - mu_untreated_hat) +
+    (1 - A) * (e_hat / (1 - e_hat)) * (Y - mu_untreated_hat)
+  ATT_aipw <- sum(aipw_terms[treated_idx]) / sum(A == 1)
+  ATT_aipw
+  
+  list(ATT_aipw = ATT_aipw, e_hat = e_hat)
+}
+```
+
+We can then apply this function to our simulated dataset.
+```{r define-aipw_res}
+aipw_res <- estim_aipw(
+  data = tb, Y_name = Y_name, A_name = A_name, A_untreated = A_untreated, 
+  n_folds = 5, seed = 12345
+)
+```
+
+Let us extract the ATT and the propensity scores:
+```{r define-ATT_aipw}
+ATT_aipw <- aipw_res$ATT_aipw
+e_hat <- aipw_res$e_hat
+ATT_aipw
+```
+
+
+Now that we have estimated the propensity scores for each individual, we can have a look at their distribution.
+
+:::{.panel-tabset}
+
+#### Histogram
+
+The distribution of the propensity scores is shown in @fig-prop-scores-hist
+
+```{r}
+#| fig-cap: Distribution of the estimated propensity scores.
+#| label: fig-prop-scores-hist
+#| code-fold: true
+#| code-summary: Codes to create the Figure.
+par(mar = c(4.1, 4.1, 1.1, 1.1))
+hist(e_hat, xlab = "Propensity scores", main = "", family = font_family)
+```
+
+
+#### Estimated Density
+
+We can also have a look at the density estimated with a Beta kernel (@fig-prop-scores-density).
+
+```{r}
+#| fig-cap: Estimated density (beta kernel) of the propensity scores.
+#| label: fig-prop-scores-density
+#| code-fold: true
+#| code-summary: Codes to create the Figure.
+library(kdensity)
+kprop <- kdensity::kdensity(e_hat, kernel = "beta", bw = .05)
+par(mar = c(4.1, 4.1, 1.1, 1.1))
+plot(
+  kprop, xlab = "Propensity Scores", ylab = "Density", main = "",
+  ylim = c(0, 6), lwd = 2, family = font_family
+)
+```
+
+:::
+
+### With IPW
+
+```{r define-estim_ipw}
+estim_ipw <- function(data,
+                      Y_name,
+                      A_name,
+                      A_untreated,
+                      n_folds = 5,
+                      stabilise = TRUE,
+                      seed = NULL) {
+  
+  if (!is.null(seed)) set.seed(seed)
+  
+  n <- nrow(data)
+  folds <- sample(rep(seq_len(n_folds), length.out = n))
+  e_hat <- numeric(n)
+  
+  variables_baseline <- setdiff(names(data), c(Y_name, A_name))
+  form_ps <- reformulate(variables_baseline, response = A_name)
+  
+  # propensity scores with cross-fitting
+  for (k in seq_len(n_folds)) {
+    idx_train <- which(folds != k)
+    idx_valid <- which(folds == k)
+    
+    ps_mod <- glm(form_ps, data = data[idx_train, ], family = binomial())
+    
+    e_hat[idx_valid] <- predict(
+      ps_mod, newdata = data[idx_valid, ], type = "response"
+    )
+  }
+  
+  # ATT with IPW weights
+  A <- data[[A_name]]
+  Y <- data[[Y_name]]
+  treated <- A != A_untreated
+  n_treated <- sum(treated)
+  pi_hat <- mean(treated)
+  
+  w <- ifelse(
+    treated,
+    1,
+    e_hat / (1 - e_hat) / if (stabilise) pi_hat else 1
+  )
+  
+  ATT_ipw <- mean(Y[treated]) -
+    weighted.mean(Y[!treated], w[!treated])
+  
+  list(
+    ATT_ipw = ATT_ipw,
+    e_hat = e_hat,
+    w  = w
+  )
+}
+```
+
+Without the mediators
+
+```{r define-ipw_out}
+ipw_out <- estim_ipw(
+  data = tb[, c(A_name, Y_name)],
+  Y_name = Y_name,
+  A_name = A_name,
+  A_untreated = A_untreated,
+  n_folds = 5,
+  stabilise = TRUE,
+  seed = 12345
+)
+```
+
+```{r}
+(ATT_ipw <- ipw_out$ATT_ipw)
+```
+
+
+
+### With Optimal Transport
+
+We define a function, `att_counterfactuals()`{.R} to compute the causal effect of $A$ on the outcome $Y$, for the treated individuals.
+
+```{r define-att_counterfactuals}
+#' Average treatment on the treated using counterfactuals.
+#' 
+#' @param data_untreated Dataset with the untreated units only.
+#' @param data_treated Dataset with the treated units only.
+#' @param data_cf Counterfactuals (treated had they been untreated).
+#' @param Y_name Name of the column with the outcome variable.
+#' @param A_name Name of the column with the treatment variable.
+#' @param A_untreated Value of the treatment for the untreated units.
+att_counterfactuals <- function(data_untreated,
+                                data_treated,
+                                data_cf,
+                                Y_name,
+                                A_name,
+                                A_untreated) {
+  
+  n_untreated <- nrow(data_untreated)
+  n_treated <- nrow(data_treated)
+  
+  mu_untreated_model <- randomForest(
+    x = data_untreated |> select(-!!Y_name, -!!A_name),
+    y = pull(data_untreated, !!Y_name)
+  )
+  
+  # Predictions on transported individuals
+  pred_treated_t <- predict(mu_untreated_model, newdata = data_cf)
+  # Observed outcome for treated
+  Y_treated_obs <- data_treated |> pull(!!Y_name)
+  
+  # ATT with the counterfactuals
+  mean(Y_treated_obs - pred_treated_t)
+}
+```
+
+We apply this function to our simulated dataset.
+
+```{r}
+tb_untreated <- tb |> filter(!!sym(A_name) == !!A_untreated)
+tb_treated <- tb |> filter(!!sym(A_name) != !!A_untreated)
+
+ATT_ot <- att_counterfactuals(
+  data_untreated = tb_untreated, 
+  data_treated = tb_treated,
+  data_cf = as_tibble(X1_t), Y_name = Y_name, A_name = A_name, A_untreated = A_untreated
+)
+ATT_ot
+```
+
+
+### With Sequential Optimal Transport
+
+We apply the same function as that used with the counterfactuals obtained with optimal transport (`att_counterfactuals()`{.R}). However, here, we feed it with the counterfactuals obtained with sequential transport. For those where we first transport $X_1$ and then $X_2 \mid X_1$:
+```{r define-ATT_sot_12}
+ATT_sot_12 <- att_counterfactuals(
+  data_untreated = tb_untreated, 
+  data_treated = tb_treated,
+  data_cf = as_tibble(X1_st_12) |> magrittr::set_colnames(c("X1", "X2")),
+  Y_name = Y_name, A_name = A_name, A_untreated = A_untreated
+)
+```
+
+And for the counterfactuales obtained by sequential transport where we first transport $X_2$ and then $X_1 \mid X_2$:
+```{r define-ATT_sot_21}
+ATT_sot_21 <- att_counterfactuals(
+  data_untreated = tb_untreated, 
+  data_treated = tb_treated,
+  data_cf = as_tibble(X1_st_21) |> magrittr::set_colnames(c("X1", "X2")),
+  Y_name = Y_name, A_name = A_name, A_untreated = A_untreated
+)
+```
+
 ### With Causal Mediation Analysis
 
 ```{r library-mediation}
@@ -831,15 +1108,6 @@ df <- gen_data(
 library(mediation)
 ```
 
-Let us create a dataset, `tb`, with only the binary response (Y), the binary treatment (A), and the two covariates.
-
-
-```{r define-tb}
-tb <- df[, c("Y", "A", "X1", "X2")]
-A_name <- "A"
-A_untreated <- 0
-Y_name <- "Y"
-```
 
 ```{r define-med_mod}
 med_mod <- multimed(
@@ -852,159 +1120,233 @@ med_mod <- multimed(
 ```
 
 
-Let us retrieve $\bar{\delta}(0)$ (average causal mediation effect for $a=0$):
-```{r define-delta_0}
-(delta_0_med <- mean((med_mod$d0.lb + med_mod$d0.ub) / 2))
-```
-
-Then, let us get $\bar{\zeta}(1)$ (average direct effect for $a=1$):
-```{r define-zeta_1}
-(zeta_1_med <- mean((med_mod$z1.lb + med_mod$z1.ub) / 2))
-```
-
-We can then compute the total causal effect:
-```{r define-tot_effect_t}
-(tot_effect_med <- delta_0_med + zeta_1_med)
-```
-
-
-### With Optimal Transport
-
-We define a function, `causal_effects_cf()`{.R} to compute the causal effect of $A$ on the outcome $Y$, for the treated individuals.
-
-```{r define-causal_effects_cf}
-#' Average treatment on the treated using counterfactuals.
-#' 
-#' @param data_untreated Dataset with the untreated units only.
-#' @param data_treated Dataset with the treated units only.
-#' @param data_cf Counterfactuals (untreated had they been treated).
-#' @param Y_name Name of the column with the outcome variable.
-#' @param A_name Name of the column with the treatment variable.
-#' @param A_untreated Value of the treatment for the untreated units.
-causal_effects_cf <- function(data_untreated,
-                              data_treated,
-                              data_cf,
-                              Y_name,
-                              A_name,
-                              A_untreated) {
-  
-  n_untreated <- nrow(data_untreated)
-  n_treated <- nrow(data_treated)
-  
-  # Outcome model for untreated
-  mu_untreated_model <- randomForest(
-    x = data_untreated |> dplyr::select(-!!Y_name, -!!A_name),
-    y = pull(data_untreated, !!Y_name)
-  )
-  
-  # Outcome model for treated
-  mu_treated_model <- randomForest(
-    x = data_treated |> dplyr::select(-!!Y_name, -!!A_name),
-    y = pull(data_treated, !!Y_name)
-  )
-  
-  # Observed outcome for untreated
-  Y_untreated_obs <- data_untreated |> pull(!!Y_name)
-  
-  # Natural Indirect Effect
-  delta_0_i <- predict(mu_untreated_model, newdata = data_cf) - Y_untreated_obs
-  delta_0 <- mean(delta_0_i)
-  # Natural Direct Effect
-  zeta_1_i <- predict(mu_treated_model, newdata = data_cf) - 
-    predict(mu_untreated_model, newdata = data_cf)
-  zeta_1 <- mean(zeta_1_i)
-  # Total Causal Effect for treated
-  tot_effect <- delta_0 + zeta_1
-  
-  list(
-    delta_0_i = delta_0_i,
-    delta_0 = delta_0,
-    zeta_1_i = zeta_1_i,
-    zeta_1 = zeta_1,
-    tot_effect = tot_effect
-  )
-}
-```
-
-We use a random forest to estimate the outcome model.
 ```{r}
-#| message: false
-#| warning: false
-library(randomForest)
-```
-
-
-We apply this function to our simulated dataset.
-
-```{r}
-tb_untreated <- tb |> filter(!!sym(A_name) == !!A_untreated)
-tb_treated <- tb |> filter(!!sym(A_name) != !!A_untreated)
-
-causal_effects_ot <- causal_effects_cf(
-  data_untreated = tb_untreated, 
-  data_treated = tb_treated,
-  data_cf = as_tibble(X0_t), 
-  Y_name = Y_name, 
-  A_name = A_name, 
-  A_untreated = A_untreated
-)
-
-cbind(
-  delta_0 = causal_effects_ot$delta_0,
-  zeta_1 = causal_effects_ot$zeta_1, 
-  tot_effect = causal_effects_ot$tot_effect
-)
-```
-
-
-### With Sequential Optimal Transport
-
-We apply the same function as that used with the counterfactuals obtained with optimal transport (`causal_effects_cf()`{.R}). However, here, we feed it with the counterfactuals obtained with sequential transport. For those where we first transport $X_1$ and then $X_2 \mid X_1$:
-```{r define-causal_effect_sot_12}
-causal_effect_sot_12 <- causal_effects_cf(
-  data_untreated = tb_untreated, 
-  data_treated = tb_treated,
-  data_cf = as_tibble(X0_st_12) |> magrittr::set_colnames(c("X1", "X2")),
-  Y_name = Y_name, A_name = A_name, A_untreated = A_untreated
-)
-```
-
-And for the counterfactuales obtained by sequential transport where we first transport $X_2$ and then $X_1 \mid X_2$:
-```{r define-causal_effect_sot_21}
-causal_effect_sot_21 <- causal_effects_cf(
-  data_untreated = tb_untreated, 
-  data_treated = tb_treated,
-  data_cf = as_tibble(X0_st_21) |> magrittr::set_colnames(c("X1", "X2")),
-  Y_name = Y_name, A_name = A_name, A_untreated = A_untreated
-)
+# lower bounds on the average causal mediation effects under treatment
+# med_mod$d1.lb
+# lower bounds on the average causal mediation effects under treatment
+# med_mod$d1.ub
+# average causal mediation effects under treatment
+acme_t <- mean((med_mod$d1.lb + med_mod$d1.ub) / 2)
+# lower bounds on the average direct effects under treatment
+ade_t <- mean((med_mod$z1.lb + med_mod$z1.ub) / 2)
+(tot_effect_t <- acme_t + ade_t)
 ```
 
 
 
 ### Summary
 
-```{r summary}
-tribble(
-  ~Method, ~Name, ~Value,
-  "Mediation", "delta(0)", delta_0_med,
-  "Mediation", "zeta(1)", zeta_1_med,
-  "Mediation", "tau", tot_effect_med,
-  #
-  "OT", "delta(0)", causal_effects_ot$delta_0,
-  "OT", "zeta(1)", causal_effects_ot$zeta_1,
-  "OT", "tau", causal_effects_ot$tot_effect,
-  #
-  "SOT (1)", "delta(0)", causal_effect_sot_12$delta_0,
-  "SOT (1)", "zeta(1)", causal_effect_sot_12$zeta_1,
-  "SOT (1)", "tau", causal_effect_sot_12$tot_effect,
-  #
-  "SOT (2)", "delta(0)", causal_effect_sot_21$delta_0,
-  "SOT (2)", "zeta(1)", causal_effect_sot_21$zeta_1,
-  "SOT (2)", "tau", causal_effect_sot_21$tot_effect
-) |> 
-  pivot_wider(names_from = "Name", values_from = "Value")
+```{r}
+cbind(
+  ATT_aipw = ATT_aipw,
+  ATT_ipw = ATT_ipw,
+  ATT_ot = ATT_ot,
+  ATT_sot_12 = ATT_sot_12,
+  ATT_sot_21 = ATT_sot_21,
+  tot_effect_t = tot_effect_t
+)
 ```
 
-In the next page, @sec-gaussian-ex-simul, we run some simulations using the same DGP, where we make the distance between the two distributions vary.
+
+## Decreasing Overlapping
+
+Let us now run some simulations in which we make the distance between the two means of the covariates vary. Until now, this distance was $2$, since $\mu_0$ was set to $-1$ and $\mu_1$ was set to 1. Now, we randomly draw a shift value $\alpha\sim\mathcal{U}(0,2)$ and set the means as $\mu_0 = \alpha \times (-1)$ and $\mu_1 = \alpha \times (+1)$. The distance between the means of the two covariates now becomes equal to $2$. All the other parameters of the DGP (see @sec-dgp) remain unchanged.
+
+To run the simulations, we create a wrapper function, `simu()`{.R}, that first generates 500 observations in each group, then proceeds to compute the ATT using the AIPW estimator (@eq-aipw)?
+
+```{r}
+#| code-fold: true
+#| code-summary: The function for the Monte-Carlo simulation.
+simu <- function(seed) {
+  
+  set.seed(seed)
+  n <- 500
+  a <- runif(1, min = 0, max = 2)
+  
+  df <- gen_data(
+    n = n, 
+    mu0 = -1, mu1 = +1, 
+    r0 = +.7, r1 = -.5, a = a, seed = seed
+  )
+  
+  tb <- df[, c("Y", "A", "X1", "X2")]
+  
+  tb
+
+  A_name <- "A"
+  A_0 <- 0
+  Y_name <- "Y"
+  
+  n_folds <- 5 # 5-fold cross-fitting
+  folds <- sample(rep(1:n_folds, length.out = n))
+  # Init results
+  ## outcomes
+  mu0_hat <- rep(NA, n)
+  mu1_hat <- rep(NA, n)
+  ## propensity scores
+  e_hat  <- rep(NA, n)
+  
+  for (k in 1:n_folds) {
+    idx_valid <- which(folds == k)
+    idx_train <- setdiff(1:n, idx_valid)
+    tb_train <- tb |> slice(idx_train)
+    tb_valid <- tb |> slice(-idx_train)
+    # Outcome models
+    mu0_model <- randomForest(
+      x = tb_train |> filter(!!sym(A_name) == !!A_0) |>
+        select(-!!Y_name, -!!A_name),
+      y = tb_train |> filter(!!sym(A_name) == !!A_0) |>
+        pull(!!Y_name)
+    )
+    mu1_model <- randomForest(
+      x = tb_train |>
+        filter(!!sym(A_name) != !!A_0) |> select(-!!Y_name, -!!A_name),
+      y = tb_train |> filter(!!sym(A_name) != !!A_0) |>
+        pull(!!Y_name)
+    )
+    
+    mu0_hat[idx_valid] <- predict(
+      mu0_model, newdata = tb_valid |> select(-!!Y_name, -!!A_name)
+    ) |> as.character() |> as.numeric()
+    mu1_hat[idx_valid] <- predict(
+      mu1_model, newdata = tb_valid |> select(-!!Y_name, -!!A_name)
+    ) |> as.character() |> as.numeric()
+    
+    # Propensity model
+    ps_model <- glm(
+      formula(paste0(A_name, "~.")), data = tb_train |> select(-!!Y_name),
+      family = binomial()
+    )
+    # Propensity scores
+    e_hat[idx_valid] <- predict(
+      ps_model, newdata = tb_valid, type = "response"
+    )
+    
+  }
+  
+  A <- pull(tb, !!A_name)
+  Y <- pull(tb, !!Y_name)
+  treated_idx <- which(A != A_0)
+  
+  aipw_terms <- A * (Y - mu0_hat) +
+    (1 - A) * (e_hat / (1 - e_hat)) * (Y - mu0_hat)
+  ATT_aipw <- sum(aipw_terms[treated_idx]) / sum(A == 1)
+  
+  tibble(
+    a = a, 
+    ATT_aipw = ATT_aipw, 
+    prob_1_99 = mean((e_hat > .01) & (e_hat < .99))
+  )
+}
+```
+
+```{r run-simul-mc, eval=FALSE}
+# The estimation takes about 4 minutes.
+# Previously obtained results are loaded here (this chunk is not estimated).
+library(pbapply)
+library(parallel)
+ncl <- detectCores()-1
+(cl <- makeCluster(ncl))
+
+clusterEvalQ(cl, {
+  library(tidyverse)
+  library(randomForest)
+  library(mnormt)
+}) |>
+  invisible()
+  
+clusterExport(cl, "gen_data")
+
+res_sim <- pbapply::pblapply(1:2000, simu, cl = cl)
+stopCluster(cl)
+
+res_sim_tb <- list_rbind(res_sim)
+
+save(res_sim_tb, file = "../output/res_sim_tb.rda")
+```
+We load the previously obtained results:
+```{r load-res_sim_tb}
+load("../output/res_sim_tb.rda")
+```
+
+The results of the simulations are shown in @fig-gauss-ex-prop-1-99-alpha. Each dot represents a single replication. The left panel displays the probability that the estimated propensity scores lie within the interval $[1\%, 99\%]$, as a function of $\alpha$ (recall that the distance between the two covariates mean is $2\alpha$). The orange curve is a spline showing the overall trend. The right panel shows the estimated Average Treatment Effect on the Treated using the AIPW estimator. The central orange line corresponds to a spline fit of the point estimates, while the lower and upper orange curves represent the 10th and 90th quantiles, respectively.
+
+```{r}
+#| code-fold: true
+#| code-summary: Codes to create the Figure.
+#| message: false
+#| warning: false
+#| fig-cap: Proportion of observation with a propensity score in $[1\%,99\%]$ (left) as a function of $\alpha \in[0,2]$ ; estimation of the ATT (right), based on the AIPW estimator. Simulated toy example ($n=500$), 2,000 Monte-Carlo replications.
+#| label: fig-gauss-ex-prop-1-99-alpha
+#| fig-height: 2.3
+#| fig-width: 4.6
+
+library(splines)
+par(mar = c(3.1, 3.1, 1.1, 1.1), mfrow = c(1, 2))
+
+plot(
+  res_sim_tb$a, res_sim_tb$prob_1_99,
+  cex = .3,
+  xlab = "",
+  ylab = "",
+  pch = 19,
+  col = scales::alpha("#009E73", .1),
+  family = font_family
+)
+title(
+  xlab = latex2exp::TeX("Dist. btw. means ($\\alpha \\times 2$)"),
+  # ylab = "Prob. prop. score in [1%,99%]",
+  ylab = latex2exp::TeX("$1\\%<P[\\hat{e}(X)]<99\\%$"),
+  line = 2, family = font_family
+)
+
+# The proportions of propensity scores within [1%,99%] for each replication
+# and the drawn value for a
+tb_plot <- data.frame(x = res_sim_tb$a, y = res_sim_tb$prob_1_99)
+rqxbar <- lm(y ~ bs(x, 8), data = tb_plot)
+vu <- (0:40) / 20
+yxbar <- predict(rqxbar, newdata = data.frame(x = vu))
+lines(vu, yxbar, lwd = 2,col = "#D55E00")
+
+
+plot(
+  res_sim_tb$a, res_sim_tb$ATT_aipw,
+  cex = .3,
+  xlab = "",
+  ylab = "",
+  pch = 19,
+  col = scales::alpha("#009E73", .1),
+  family = font_family
+)
+title(
+  xlab = latex2exp::TeX("Dist. btw. means ($\\alpha \\times 2$)"), 
+  # ylab = "Estimated ATT, AIPW", 
+  ylab = latex2exp::TeX("$\\widehat{ATT}^{AIPW}$"),
+  line = 2, family = font_family
+)
+
+# The AIPW for each replication, and the drawn value of the shift
+tb_aipw_a <- tibble(x = res_sim_tb$a, y = res_sim_tb$ATT_aipw)
+# Quantile regressions at two levels: .9 and .1
+library(quantreg)
+library(splines)
+rq9 <- rq(y ~ bs(x), data = tb_aipw_a, tau = .9)
+rq1 <- rq(y ~ bs(x), data = tb_aipw_a, tau = .1)
+rqxbar <- lm(y ~ bs(x), data = tb_aipw_a)
+vu <- (0:40) / 20
+y1 <- predict(rq1, newdata = data.frame(x = vu))
+y9 <- predict(rq9, newdata = data.frame(x = vu))
+yxbar <- predict(rqxbar, newdata = data.frame(x = vu))
+lines(vu, yxbar, lwd = 2, col = "#D55E00") # splines
+lines(vu, y1, lwd = 1, col = "#D55E00") # QR (tau=.1)
+lines(vu, y9, lwd = 1, col = "#D55E00") # QR (tau=.0)
+abline(h = 3, col = "black")
+
+p <- recordPlot()
+pdf(paste0(path, "gauss-ex-prop-1-99-alpha.pdf"), width = 4.6, height = 4.6/2)
+replayPlot(p)
+dev.off()
+```
+
 
 

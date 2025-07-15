@@ -11,6 +11,7 @@ book:
     - part: I. Introduction
       chapters:
         - gaussian-example.qmd
+        - gaussian-example-mc.qmd
     - part: II. Functions for Illustrations
       chapters:
         - utils.qmd
