@@ -2,7 +2,7 @@ colours <- c(
   # `0` = "#5BBCD6", 
   # `1` = "#FF0000", 
   `0` = "#1b95e0",
-  `1` = "darkred",
+  `1` = "#7F170E",
   A = "#00A08A", 
   B = "#F2AD00", 
   with = "#046C9A", 
@@ -26,7 +26,7 @@ font_family <- "CMU Serif"
 #'
 theme_paper <- function (...) {
   theme(
-    text = element_text(family = "Helvetica"),
+    text = element_text(family = font_family),
     plot.background = element_rect(fill = "transparent", color = NA),
     panel.background = element_rect(fill = "transparent", color = NA),
     panel.border = element_rect(fill = NA, colour = "grey50", linewidth = 1),
