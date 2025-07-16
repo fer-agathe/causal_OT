@@ -4,9 +4,10 @@ library(transportsimplex)
 library(randomForest)
 library(grf)
 library(cluster)
-source("functions.R")
+source("../scripts/functions.R")
 # library(cluster)
-berkeley <- read_csv("data/berkeley.csv")
+#berkeley <- read_csv("data/berkeley.csv")
+berkeley <- read_csv("../bac-a-sable/data/berkeley.csv")
 
 # Treated (S=1): women
 
@@ -20,7 +21,7 @@ tb <-
     Sex = ifelse(Sex == "F", 1, 0), # Sensitive attribute
     Admission = ifelse(Admission == "Accepted", 1, 0) # Outcome
   ) |> 
-  sample_frac(.1) |> 
+  #sample_frac(.1) |> 
   select(-Year)
 
 summary(tb)
@@ -167,3 +168,4 @@ Y_treated_obs <- tb |> filter(!!sym(S_name) != !!S_untreated) |> pull(!!Y_name)
 ATT_cot <- mean(Y_treated_obs - ifelse(pred_treated_t == 0, 0, 1))
 
 tibble(ATT_cot = ATT_cot, ATT_aipw = ATT_aipw, ATT_dml = ATT_dml)
+

@@ -65,7 +65,7 @@ seed <- 2025
 # num_neighbors_q = NULL
 # silent = FALSE
 
-sequential_transport <- seq_trans(
+system.time({sequential_transport <- seq_trans(
   data = adult, 
   adj = adj_mat, 
   s = "sex", 
@@ -74,7 +74,7 @@ sequential_transport <- seq_trans(
   num_neighbors = 50, 
   num_neighbors_q = NULL,
   silent = FALSE
-)
+)})
 
 save(sequential_transport, file = "sequential_transport_adult.rda")
 

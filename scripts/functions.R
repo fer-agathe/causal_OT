@@ -663,6 +663,66 @@ wass_lp <- function(dxy,
   list(distance = value, plan = gamma)
 }
 
+#' Solving the Optimal Transport Problem with Sinkhorn Penalty
+#'
+#' @description
+#' Finds the optimal transport plan using entropic regularization.
+#'
+#' @param dxy Cost matrix of transport distances between points in X and Y.
+#' @param wx Weights (marginal distribution) for X.
+#' @param wy Weights (marginal distribution) for Y.
+#' @param p Order of the Wassterstein distance. (If p=2: squared Euclidean
+#'  cost).
+#'
+#' @importFrom T4transport sinkhornD
+#'
+#' @noRd
+wass_lp_sinkhorn <- function(dxy, wx, wy, p = 2) {
+  stopifnot(all(abs(sum(wx) - 1) < 1e-8), all(abs(sum(wy) - 1) < 1e-8))
+  
+  # Compute transport plan via Sinkhorn algorithm
+  gamma <- T4transport::sinkhornD(dxy, p = 2, wx = wx, wy = wy, lambda = 0.1)
+  
+  list(distance = gamma$distance, plan = gamma$plan)
+}
+
+#' Solving the Optimal Transport Problem
+#'
+#' @description
+#' Finds the optimal transport plan using shortsimplex method.
+#'
+#' @param dxy Cost matrix of transport distances between points in X and Y.
+#' @param wx Weights (marginal distribution) for X.
+#' @param wy Weights (marginal distribution) for Y.
+#' @param p Order of the Wassterstein distance. (If p=2: squared Euclidean
+#'  cost).
+#'
+#' @importFrom transport transport
+#'
+#' @noRd
+wass_lp_fast <- function(dxy, wx, wy, p = 2) {
+  stopifnot(all(abs(sum(wx) - 1) < 1e-8), all(abs(sum(wy) - 1) < 1e-8))
+  
+  m <- length(wx)
+  n <- length(wy)
+  
+  # Convert dxy to a cost matrix (flattened)
+  cost <- as.matrix(dxy)^p
+  
+  # Solve the OT problem (default method = "shortsimplex")
+  plan <- transport::transport(wx, wy, costm = cost)
+  
+  # Convert transport plan (sparse format) to matrix
+  gamma <- matrix(0, m, n)
+  for (i in seq_len(nrow(plan))) {
+    gamma[plan$from[i], plan$to[i]] <- plan$mass[i]
+  }
+  
+  # Compute Wasserstein distance
+  value <- sum(gamma * cost)^(1 / p)
+  
+  list(distance = value, plan = gamma)
+}
 
 #' Ensures that a weight vector (marginal distribution) is valid
 #'
@@ -741,5 +801,5 @@ wasserstein_simplex <- function(X,
   dist_mat  <- compute_pdist_simplex_fast(X, Y)
   
   # Solve the optimal transport problem
-  wass_lp(dxy = dist_mat, wx = par_wx, wy = par_wy, p = 2)
+  wass_lp_fast(dxy = dist_mat, wx = par_wx, wy = par_wy, p = 2)
 }
