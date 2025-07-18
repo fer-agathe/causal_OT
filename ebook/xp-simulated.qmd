@@ -126,15 +126,15 @@ The outcome $Y$ is then drawn from a Bernoulli distribution with success probabi
 
 For each observation, we additionally simulate a counterfactual covariate vector and outcome under the opposite treatment status. This includes drawing $(X_1^{\text{cf}}, X_2^{\text{cf}})$ from the treatment-specific bivariate normal distribution of the opposite group, computing the corresponding $X_3^{\text{cf}}$ using the same multinomial model (with $A$ flipped), and evaluating $Y^{\text{cf}}$ via the appropriate counterfactual logit model.
 
-We draw $n_0=200$ observations in group 0 and $n_1=400$ observations in group 1. We generate a function, `gen_data()`{.R} to generate data from this data generating process.
+We draw $n_0=400$ observations in group 0 and $n_1=200$ observations in group 1. We generate a function, `gen_data()`{.R} to generate data from this data generating process.
 
 ```{r define-gen_data}
 #| code-fold: true
 #| code-summary: The `gen_data()`{.R} function.
 gen_data <- function(seed) {
   set.seed(seed)
-  n_0 <- 200
-  n_1 <- 400
+  n_0 <- 400
+  n_1 <- 200
   
   # X1 and X2 in both groups from sensitive-specific multivariate normal 
   # distributions
@@ -227,7 +227,7 @@ gen_data <- function(seed) {
 Let us generate a dataset:
 ```{r define-tb <- gen_data(2)}
 tb <- gen_data(2) |> 
-  mutate(across(is.character, ~as.factor(.x)))
+  mutate(across(where(is.character), ~as.factor(.x)))
 ```
 
 
@@ -285,14 +285,14 @@ plot(causal_graph)
 
 
 
-Let us follow this DAGand build the counterfactuals of `r colorize("treated", colours[["1"]])`: we thus transport individuals from $A=1$ to $A=0$. Let us set a seed for reproducibility.
+Let us follow this DAG and build the counterfactuals of `r colorize("untreated", colours[["0"]])`: we thus transport individuals from $A=0$ to $A=1$. Let us set a seed for reproducibility.
 
 ```{r}
 seed <- 1234
 set.seed(seed)
 ```
 
-We call the  `seq_trans()`{.R} function (see [Chapter -@sec-functions]) function to build the counterfactuals of untreated individuals. The estimations are done using parallel computation.
+We call the `seq_trans()`{.R} function (see [Chapter -@sec-functions]) function to build the counterfactuals of untreated individuals. The estimations are done using parallel computation.
 
 ```{r}
 A_name <- "A" # treatment name
@@ -312,6 +312,7 @@ ncl <- detectCores()-1
 
 clusterEvalQ(cl, {
   library(transportsimplex)
+  source("../scripts/functions.R")
 }) |>
   invisible()
 
@@ -319,11 +320,12 @@ sequential_transport <- seq_trans(
   data = tb, 
   adj = adj, 
   s = A_name, 
-  S_0 = 1, # source: treated
+  S_0 = 0, # source: untreated
   y = Y_name, 
   num_neighbors = 50, 
   num_neighbors_q = NULL,
   silent = FALSE,
+  method = "shortsimplex",
   cl = cl
 )
 
@@ -339,215 +341,88 @@ load("../output/res_simul-seq-t.rda")
 
 ## Measuring the Causal Effect
 
-We are interested in measuring the **average treatment effect on the treated** (ATT):
-$$
-\text{ATT} = \mathbb{E}\bigl[Y(1) - Y(0) \mid A=1\bigr]
-$$ {#eq-att}
-
-
-
-We will compute the ATT with several methods:
-
-- using conditional optimal transport (@sec-att-cot),
-- using the AIPW estimator (@sec-att-aipw),
-- using a causal forest (@sec-att-causal-forest).
-
-### True ATT
-
-
-Since we use simulated data, we can compute the true ATT:
-```{r define-ATT_true}
-Y_1 <- tb |> filter(!!sym(A_name) != !!A_untreated) |> pull(!!A_name)
-Y_1_cf <- tb |> filter(!!sym(A_name) != !!A_untreated) |> pull(Y_cf)
-
-(ATT_true <- mean(Y_1 - Y_1_cf))
+```{r define-tb_estim}
+tb_estim <- tb |> select(Y, A, X1, X2, X3)
+A_name <- "A"
+A_untreated <- 0
+Y_name <- "Y"
 ```
 
 
-### ATT with the Conditional Optimal Transport Approach {#sec-att-cot}
+### With Causal Mediation Analysis
 
-For a `r colorize("treated", colours[["1"]])` unit $i$, $Y_i(1)$ corresponds to the observed value and $Y_i(0)$ to its counterfactual, i.e. the transported value: $Y_i(0)\mid A=1 = x_{1,i}^\star$.
+Let us use the `multimed()`{.R} function from {mediation} to estimate:
 
-$$
-\widehat{\text{ATT}}^{\text{COT}} = \frac{1}{n_1} \sum_{i:A_i=1}\bigl[ Y_i -  \hat{\mu}_0(x_{1,i}^\star)\bigr],
-$$ {#eq-att-cot}
-where $\hat{\mu}_0()$ is the predictive outcome model trained on the `r colorize("untreated", colours[["0"]])`, i.e., an estimation of $\mu_0(\boldsymbol{X}_i) = \mathbb{E}[Y_i \mid \boldsymbol{X}_i, A_i = 0]$
+- $\bar{\delta}(0)$: the average causal mediation effect for $a=0$,
+- $\bar{\zeta}(1)$: the average direct effect for $a=1$,
+- $\bar{\tau} = \bar{\delta}(0) + \bar{\zeta}(1)$: the total causal effect.
 
-
-Let us split the data between `r colorize("treated", colours[["1"]])` and `r colorize("untreated", colours[["0"]])`
-```{r define-tb_untreated}
-tb_untreated <- tb |> filter(!!sym(A_name) == !!A_untreated) |> 
-  select(all_of(!!colnames(adj))) |> 
-mutate(X3 = factor(X3))
-tb_treated <- tb |> filter(!!sym(A_name) != !!A_untreated) |> 
-  select(all_of(!!colnames(adj)))
-
-n_untreated <- nrow(tb_untreated)
-n_treated <- nrow(tb_treated)
-```
-
-We train a random forest to predict the outcome $Y$, among the `r colorize("untreated", colours[["0"]])` only: $\hat{\mu}_0()$.
-
-```{r define-mu_untreated_model}
-mu_untreated_model <- randomForest(
-  x = tb_untreated |> select(-!!Y_name, -!!A_name),
-  y = factor(pull(tb_untreated, !!Y_name), levels = c(0,1))
-)
-```
-
-The transported values for $X_1$, $X_2$, and $X_3$ of all `r colorize("treated", colours[["1"]])` ($A=1$): $x_{1,i}^\star$
-```{r define-D_treated_t}
-tb_treated_t <- sequential_transport$transported |> 
-  as_tibble() |>
-  unnest_wider(where(is.list))
-```
-
-The prediction of the algorithm on those transported individuals, i.e., $\hat{\mu}_0(x_{1,i}^\star)$
-```{r define-pred_treated_t}
-pred_treated_t <- predict(mu_untreated_model, newdata = tb_treated_t)
-```
-
-We can then compute the ATT (@eq-att-cot).
-
-```{r define-att-cot}
-# ATT with the counterfactuals
-Y_treated_obs <- tb |> filter(!!sym(A_name) != !!A_untreated) |> pull(!!Y_name)
-ATT_cot <- mean(Y_treated_obs - ifelse(pred_treated_t == 0, 0, 1))
-ATT_cot
-```
-
-### ATT with the AIPW Estimator {#sec-att-aipw}
-
-We use cross-fitting to estimate the average treatment on the `r colorize("treated", colours[["1"]])` using the AIPW estimator:
-$$
-\widehat{\text{ATT}}_{\text{AIPW}} = \frac{1}{n_1} \sum_{i: A_i = 1} \left[ Y_i - \hat{\mu}_0(X_i) \right] + \frac{1}{n_1} \sum_{i: A_i = 0} \frac{\hat{e}(X_i)}{1 - \hat{e}(X_i)} \left[ Y_i - \hat{\mu}_0(X_i) \right]
-$$
-
-where $\hat{e}\bigl(\boldsymbol{X}_i\bigr)$ is the estimation of the propensity score $e(X_i) = \mathbb{P}(A_i = 1 \mid \boldsymbol{X}_i)$.
-
-```{r define-e_hat}
+```{r estim-causal-effect-mediation}
 #| message: false
 #| warning: false
-set.seed(seed)
-n <- n_untreated + n_treated
-n_folds <- 5 # 5-fold cross-fitting
-folds <- sample(rep(1:n_folds, length.out = n))
-# Init results
-## outcomes
-mu_untreated_hat <- rep(NA, n)
-mu_treated_hat <- rep(NA, n)
-## propensity scores
-e_hat  <- rep(NA, n)
+# library(mediation) # we do not load it
+#  otherwise it masks a lot of useful functions
+med_mod <- mediation::multimed(
+  outcome = "Y", 
+  med.main = "X1", 
+  med.alt = c("X2", "X3"),
+  treat = "A", 
+  data = tb_estim
+)
 
-for (k in 1:n_folds) {
-  idx_valid <- which(folds == k)
-  idx_train <- setdiff(1:n, idx_valid)
-  tb_train <- tb |> slice(idx_train)
-  tb_valid <- tb |> slice(-idx_train)
-  # Outcome models
-  mu_untreated_model <- randomForest(
-    x = tb_train |> filter(!!sym(A_name) == !!A_untreated) |> 
-      select(-!!Y_name, -!!A_name),
-    y = tb_train |> filter(!!sym(A_name) == !!A_untreated) |> 
-      pull(!!Y_name) |> factor(levels = c(0, 1))
-  )
-  mu_treated_model <- randomForest(
-    x = tb_train |> 
-      filter(!!sym(A_name) != !!A_untreated) |> select(-!!Y_name, -!!A_name),
-    y = tb_train |> filter(!!sym(A_name) != !!A_untreated) |> 
-      pull(!!Y_name) |> factor(levels = c(0, 1))
-  )
-  
-  mu_untreated_hat[idx_valid] <- predict(
-    mu_untreated_model, newdata = tb_valid |> select(-!!Y_name, -!!A_name)
-  ) |> as.character() |> as.numeric()
-  mu_treated_hat[idx_valid] <- predict(
-    mu_treated_model, newdata = tb_valid |> select(-!!Y_name, -!!A_name)
-  ) |> as.character() |> as.numeric()
-  
-  # Propensity model
-  ps_model <- glm(
-    paste(A_name, " ~ ."), data = tb_train |> select(-!!Y_name),
-    family = binomial()
-  )
-  # Propensity scores
-  e_hat[idx_valid] <- predict(
-    ps_model, newdata = tb_valid, type = "response"
-  )
-}
+delta_0_med <- mean((med_mod$d0.lb + med_mod$d0.ub) / 2)
+zeta_1_med <- mean((med_mod$z1.lb + med_mod$z1.ub) / 2)
+tot_effect_med <- delta_0_med + zeta_1_med
 ```
 
-For convenience, let us extract the treatment and the outcome:
-```{r define-treated_idx}
-A <- pull(tb, !!A_name)
-Y <- pull(tb, !!Y_name)
-# Index of treated
-treated_idx <- which(A != A_untreated)
+The estimated values:
+
+```{r show-estim-mediation}
+cbind(delta_0 = delta_0_med, zeta_1 = zeta_1_med, tot_effect = tot_effect_med)
 ```
 
-Lastly, we can compute the ATT with the AIPW estimator:
+### With Sequential Optimal Transport
 
-```{r define-ATT_aipw}
-aipw_terms <- A * (Y - mu_untreated_hat) +
-  (1 - A) * (e_hat / (1 - e_hat)) * (Y - mu_untreated_hat)
-ATT_aipw <- sum(aipw_terms[treated_idx]) / sum(A == 1)
-ATT_aipw
+```{r library-randomForest}
+#| message: false
+#| warning: false
+library(randomForest)
 ```
 
-### ATT with a Causal Forest {#sec-att-causal-forest}
+We use a random forest to estimate the outcome model (see `causal_effects_cf()`{.R} in [Chapter -@sec-functions]).
 
-Let us apply a causal forest to estimate the ATT.
+```{r}
+#| warning: false
+#| message: false
+tb_untreated <- tb_estim |> filter(!!sym(A_name) == !!A_untreated)
+tb_treated <- tb_estim |> filter(!!sym(A_name) != !!A_untreated)
 
-First, we need to perform 1-hot encoding for categorical variables to comply with the requirements of the `causal_forest()`{R} from {grf}.
-```{r define-X_mat}
-# 1-hot-encoding
-X_mat <- tb |> select(-!!Y_name, -!!A_name)
-X_mat <- model.matrix(~ . - 1, data = X_mat)
-```
+causal_effects_sot <- causal_effects_cf(
+  data_untreated = tb_untreated, 
+  data_treated = tb_treated,
+  data_cf = as_tibble(sequential_transport$transported), 
+  Y_name = Y_name, 
+  A_name = A_name, 
+  A_untreated = A_untreated
+)
 
-We train the causal forest:
-```{r define)fit_cf}
-fit_cf <- causal_forest(
-  X = X_mat, 
-  Y = Y, 
-  W = A
+cbind(
+  delta_0 = causal_effects_sot$delta_0,
+  zeta_1 = causal_effects_sot$zeta_1, 
+  tot_effect = causal_effects_sot$tot_effect
 )
 ```
 
+## Monte-Carlo Experiment
 
-```{r define-ATT_dml}
-# the individual treatment effects
-tau_hat <- predict(fit_cf)$predictions
-# the ATT
-ATT_dml <- mean(tau_hat[treated_idx])
-ATT_dlm_se <- sqrt(var(tau_hat[treated_idx]) / n_treated)
-
-# This can also be obtained as follows:
-# average_treatment_effect(fit_cf, target.sample = "treated")
-
-# The ATT:
-ATT_dml
-```
-
-### Summary
-
-```{r show-values}
-tibble(
-  ATT = ATT_true, ATT_cot = ATT_cot, ATT_aipw = ATT_aipw, ATT_dml = ATT_dml
-)
-```
-
-# Monte Carlo Experiment
-
-We run Monte-Carlo simulations to reproduce the previous steps. In each of the 200 iteration, we draw some data according to the DGP presented in @sec-dgp. Then, we use the `seq_trans()`{.R} function (see [Chapter -@sec-functions]) to perform sequential conditional transport to transport individuals from the `r colorize("treated group", colours[["1"]])` ($A=1$) to the `r colorize("untreated group", colours[["0"]])` ($A=0$).
+We run Monte-Carlo simulations to reproduce the previous steps. In each of the 200 iteration, we draw some data according to the DGP presented in @sec-dgp. Then, we use the `seq_trans()`{.R} function (see [Chapter -@sec-functions]) to perform sequential conditional transport to transport individuals from the `r colorize("untreated group", colours[["0"]])` ($A=0$) to the `r colorize("treated group", colours[["1"]])` ($A=1$).
 
 We set the seeds for each replication and we define placeholders.
 ```{r define-res_ATT}
 seeds <- 1:200
-res_simul <- vector(mode = "list", length = length(seeds))
-res_ATT <- vector(mode = "list", length = length(seeds))
+res_simul_transp <- vector(mode = "list", length = length(seeds))
+res_simul_effects <- vector(mode = "list", length = length(seeds))
 ```
-
 
 ```{r, eval=FALSE}
 # This chunk is not evaluated.
@@ -559,6 +434,7 @@ ncl <- detectCores()-1
 
 clusterEvalQ(cl, {
   library(transportsimplex)
+  source("../scripts/functions.R")
 }) |>
   invisible()
 
@@ -567,7 +443,7 @@ for (i in 1:length(seeds)) {
   seed <- seeds[i]
   tb_all <- gen_data(seed)
   tb <- tb_all |> select(A, X1, X2, X3, Y) |> 
-    mutate(across(is.character, ~as.factor(.x)))
+    mutate(across(where(is.character), ~as.factor(.x)))
   
   A_name <- "A"
   A_untreated <- 0
@@ -577,14 +453,14 @@ for (i in 1:length(seeds)) {
     data = tb, 
     adj = adj, 
     s = A_name, 
-    S_0 = 1, # source: treated
+    S_0 = 0, # source: untreated
     y = Y_name, 
     num_neighbors = 50, 
     num_neighbors_q = NULL,
     silent = FALSE,
     cl = cl
   )
-  res_simul[[i]] <- sequential_transport
+  res_simul_transp[[i]] <- sequential_transport
   
   tb_untreated <- tb |> filter(!!sym(A_name) == !!A_untreated)
   tb_treated <- tb |> filter(!!sym(A_name) != !!A_untreated)
@@ -592,108 +468,44 @@ for (i in 1:length(seeds)) {
   n_untreated <- nrow(tb_untreated)
   n_treated <- nrow(tb_treated)
   
-  ## Measuring Treatement Effect----
-  mu_untreated_model <- randomForest(
-    x = tb_untreated |> select(-!!Y_name, -!!A_name),
-    y = factor(pull(tb_untreated, !!Y_name), levels = c(0,1))
-  )  
-
-  tb_treated_t <- sequential_transport$transported |> 
-    as_tibble() |>
-    unnest_wider(where(is.list))
-  pred_treated_t <- predict(mu_untreated_model, newdata = tb_treated_t)
+  ## Measuring Causal Effect----
   
-  
-  set.seed(seed)
-  n <- n_untreated + n_treated
-  n_folds <- 5 # 5-fold cross-fitting
-  folds <- sample(rep(1:n_folds, length.out = n))
-  # Init results
-  ## outcomes
-  mu_untreated_hat <- rep(NA, n)
-  mu_treated_hat <- rep(NA, n)
-  ## propensity scores
-  e_hat  <- rep(NA, n)
-  
-  for (k in 1:n_folds) {
-    idx_valid <- which(folds == k)
-    idx_train <- setdiff(1:n, idx_valid)
-    tb_train <- tb |> slice(idx_train)
-    tb_valid <- tb |> slice(-idx_train)
-    # Outcome models
-    mu_untreated_model <- randomForest(
-      x = tb_train |> filter(!!sym(A_name) == !!A_untreated) |> 
-        select(-!!Y_name, -!!A_name),
-      y = tb_train |> filter(!!sym(A_name) == !!A_untreated) |> 
-        pull(!!Y_name) |> factor(levels = c(0, 1))
-    )
-    mu_treated_model <- randomForest(
-      x = tb_train |> 
-        filter(!!sym(A_name) != !!A_untreated) |> select(-!!Y_name, -!!A_name),
-      y = tb_train |> filter(!!sym(A_name) != !!A_untreated) |> 
-        pull(!!Y_name) |> factor(levels = c(0, 1))
-    )
-    mu_untreated_hat[idx_valid] <- predict(
-      mu_untreated_model, newdata = tb_valid |> select(-!!Y_name, -!!A_name)
-    ) |> as.character() |> as.numeric()
-    mu_treated_hat[idx_valid] <- predict(
-      mu_treated_model, newdata = tb_valid |> select(-!!Y_name, -!!A_name)
-    ) |> as.character() |> as.numeric()
-    
-    # Propensity model
-    ps_model <- glm(
-      paste(A_name, " ~ ."), 
-      data = tb_train |> select(-!!Y_name),
-      family = binomial()
-    )
-    # Propensity scores
-    e_hat[idx_valid] <- predict(
-      ps_model, newdata = tb_valid, type = "response"
-    )
-    
-  }
-  
-  # ATT with AIPW
-  A <- pull(tb, !!A_name)
-  Y <- pull(tb, !!Y_name)
-  treated_idx <- which(A != A_untreated)
-  
-  aipw_terms <- A * (Y - mu_untreated_hat) +
-    (1 - A) * (e_hat / (1 - e_hat)) * (Y - mu_untreated_hat)
-  ATT_aipw <- sum(aipw_terms[treated_idx]) / sum(A == 1)
-  
-  # ATT with DML
-  
-  # 1-hot-encoding
-  X_mat <- tb |> select(-!!Y_name, -!!A_name)
-  X_mat <- model.matrix(~ . - 1, data = X_mat)
-  
-  fit_cf <- causal_forest(
-    X = X_mat, 
-    Y = Y, 
-    W = A
+  # With Causal Mediation Analysis
+  med_mod <- mediation::multimed(
+    outcome = "Y", 
+    med.main = "X1", 
+    med.alt = c("X2", "X3"),
+    treat = "A", 
+    data = tb |> mutate(X3 = as.numeric(X3))
   )
-  # CATE: individual treatment effects
-  tau_hat <- predict(fit_cf)$predictions
-  ATT_dml <- mean(tau_hat[treated_idx])
-  ATT_dlm_se <- sqrt(var(tau_hat[treated_idx]) / sum(A == 1))
-  # average_treatment_effect(fit_cf, target.sample = "treated")
-  Y_1 <- tb |> filter(!!sym(A_name) != !!A_untreated) |> pull(!!Y_name)
-  Y_1_cf <- tb_all |> filter(!!sym(A_name) != !!A_untreated) |> pull(Y_cf)
   
-  # True ATT
-  ATT_true <- mean(Y_1 - Y_1_cf)
-  # ATT with the counterfactuals
-  ATT_cot <- mean(Y_1 - ifelse(pred_treated_t == 0, 0, 1))
-  
-  res_ATT[[i]] <- tibble(
-      seed = seed, ATT_true = ATT_true, ATT_cot = ATT_cot, 
-      ATT_aipw = ATT_aipw, ATT_dml = ATT_dml
+  delta_0_med <- mean((med_mod$d0.lb + med_mod$d0.ub) / 2)
+  zeta_1_med <- mean((med_mod$z1.lb + med_mod$z1.ub) / 2)
+  tot_effect_med <- delta_0_med + zeta_1_med
+ 
+  # With Counterfactual Values
+  causal_effects_sot <- causal_effects_cf(
+    data_untreated = tb_untreated, 
+    data_treated = tb_treated,
+    data_cf = as_tibble(sequential_transport$transported), 
+    Y_name = Y_name, 
+    A_name = A_name, 
+    A_untreated = A_untreated
   )
+  
+  res_simul_effects[[i]] <- tibble(
+    seed = seed,
+    delta_0_med = delta_0_med, 
+    zeta_1_med = zeta_1_med, 
+    tot_effect_med = tot_effect_med,
+    delta_0_sot = causal_effects_sot$delta_0,
+    zeta_1_sot = causal_effects_sot$zeta_1, 
+    tot_effect_sot = causal_effects_sot$tot_effect
+    )
 }
 
 
-save(res_ATT, res_simul, file = "../output/res_simul.rda")
+save(res_simul_transp, res_simul_effects, file = "../output/res_simul.rda")
 
 stopCluster(cl)
 ```
@@ -705,12 +517,12 @@ We load previously run simulations:
 load("../output/res_simul.rda")
 ```
 
-We can have a look at the result of the first run to show, on a ternary plot (@fig-ternary-simul-1), the `r colorize("transported variable $X_3$", colours[["B"]])` from group 1 to group 0.
+We can have a look at the `r colorize("transported values", colours[["B"]])` for variable $X_3$ (from `r colorize("group 0", colours[["0"]])` to `r colorize("group 1", colours[["1"]])`) of the first run, on a ternary plot (@fig-ternary-simul-1).
 
 ```{r}
 #| code-fold: true
 #| code-summary: Codes to create the Figure.
-#| fig-cap: !expr glue::glue("$X_3$ values for individuals from <span style='color:{c0};'>group 0</span>, those from <span style='color:{c1};'>group 1</span>, and those <span style='color:{c2};'>transported</span> from group 1 to group 0 using sequential transport.", c0 = colours[["0"]], c1 = colours[["1"]], c2 = colours[["B"]])
+#| fig-cap: !expr glue::glue("$X_3$ values for individuals from <span style='color:{c0};'>group 0</span>, those from <span style='color:{c1};'>group 1</span>, and those <span style='color:{c2};'>transported</span> from group 0 to group 1 using sequential transport.", c0 = colours[["0"]], c1 = colours[["1"]], c2 = colours[["B"]])
 #| label: fig-ternary-simul-1
 #| warning: false
 #| message: false
@@ -720,7 +532,7 @@ ggtern(
   data = gen_data(i) |> select(A, X3_p_A,X3_p_B, X3_p_C) |> 
     mutate(A = as.character(A)) |> 
     bind_rows(
-      as_tibble(res_simul[[i]]$transported_prob$X3) |> 
+      as_tibble(res_simul_transp[[i]]$transported_prob$X3) |> 
         rename_with(.fn = ~str_c("X3_p_", .)) |> 
         mutate(A = "1 to 0")
     ) |> 
@@ -753,42 +565,73 @@ ggtern(
   )
 ```
 
+Then, we can look at the measures of causal effects.
 ```{r define-ATT}
-ATT <- list_rbind(res_ATT)
+causal_effects <- list_rbind(res_simul_effects)
 ```
-
-
-The distribution of the estimated ATT on the 200 runs of the Monte-Carlo experiment are reported in @fig-simul-mc-att.
 
 
 ```{r}
 #| code-fold: true
 #| code-summary: Codes to create the Figure.
-#| fig-cap: !expr glue::glue("Average treatment effect on the treated, {n} replications.", n = length(seeds))
-#| label: fig-simul-mc-att
-ggplot(
-  data = ATT |> pivot_longer(cols = -seed) |> 
-    mutate(
-      name = factor(
-        name,
-        levels = c("ATT_true", "ATT_aipw", "ATT_dml", "ATT_cot"),
-        labels = c("True", "AIPW", "Causal Forests", "COT")
-      )
+#| fig-cap: !expr glue::glue("Causal effects, {n} replications.", n = length(seeds))
+#| label: fig-simul-mc-causal-effects
+data_plot <- causal_effects |> 
+  pivot_longer(
+    cols = -seed, 
+    names_to = "name", values_to = "tau"
+  ) |> 
+  mutate(
+    type = case_when(
+      str_detect(name, "^delta") ~ "delta",
+      str_detect(name, "^zeta") ~ "zeta",
+      str_detect(name, "^tot_effect") ~ "tot_effect",
+      TRUE ~ NA_character_
     ),
-  mapping = aes(x = value, y = name)
+    type = factor(
+      type, 
+      levels = c("delta", "zeta", "tot_effect"),
+      labels = c(
+        "$\\bar{\\delta}(0)$",
+        "$\\bar{\\zeta}(1)$",
+        "$\\bar{\\tau}$"
+      )),
+    Method = case_when(
+      str_detect(name, "_med$") ~ "causal_med",
+      str_detect(name, "_sot$") ~ "seq_ot",
+      TRUE ~ NA_character_
+    ),
+    Method = factor(
+      Method,
+      levels = c(
+        "causal_med", "seq_ot"
+      ),
+      labels = c("Causal Med.", "Seq. OT")
+    )
+  )
+ggplot(
+  data = data_plot,
+  mapping = aes(x = tau, y = Method)
 ) +
   geom_violin(
-    mapping = aes(fill = name), 
-    draw_quantiles = c(0.25, 0.5, 0.75)) +
+    mapping = aes(fill = Method),
+    draw_quantiles = c(0.25, 0.5, 0.75)
+  ) +
+  geom_hline(yintercept = 0, colour = "darkred", linetype = "dashed") +
+  theme_paper() +
+  facet_wrap(
+    ~type, nrow = 1,
+    labeller = as_labeller(latex2exp::TeX, default = label_parsed)
+  ) +
   scale_fill_manual(
     NULL,
     values = c(
-      "True" = "#E69F00", "AIPW" = "#56B4E9", 
-      "Causal Forests" = "#D55E00", "COT" = "#009E73"
+      "Causal Med." = "#E69F00",
+      "Seq. OT" = "#009E73"
     )
   ) +
-  labs(y = NULL) +
-  theme_paper() +
-  theme(legend.position = "bottom")
+  labs(y = NULL, x = latex2exp::TeX("$\\tau$")) +
+  theme(legend.position = "bottom") # axis.text.y = element_blank()
 ```
+
 

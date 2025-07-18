@@ -5,7 +5,7 @@
 
 ## Objectives
 
-In this page, XXX
+In this page, we generate two Gaussian
 
 
 
@@ -15,6 +15,7 @@ In this page, XXX
 #| warning: false
 #| message: false
 library(tidyverse)
+library(tikzDevice)
 library(mnormt)
 ```
 
@@ -24,7 +25,8 @@ library(mnormt)
 #| code-fold: true
 #| code-summary: Codes for graphical parameters
 library(extrafont, quietly = TRUE)
-col_group <- c("#1b95e0","#7F170E", "#00A08A")
+col_group <- c("#00A08A","#F2AD00", "#1b95e0")
+colour_methods <- c("OT" = "#CC79A7", "seq_1" = "#0072B2", "seq_2" = "#D55E00")
 colGpe1 <- col_group[2]
 colGpe0 <- col_group[1]
 colGpet <- col_group[3]
@@ -35,20 +37,7 @@ font_family <- "CMU Serif"
 path <- "./figs/"
 if (!dir.exists(path)) dir.create(path)
 
-theme_paper <- function(...) {
-  font_size <- 20
-  theme(
-    text = element_text(family = font_family, size = unit(font_size, "pt")),
-    plot.background = element_rect(fill = "transparent"),
-    legend.key = element_blank(),
-    panel.spacing = unit(1, "lines"),
-    panel.background = element_rect(fill = NA, colour = "black"),
-    panel.grid.major = element_line(colour = "grey80"),
-    plot.title = element_text(hjust = 0, size = rel(1.3), face = "bold"),
-    plot.title.position = "plot",
-    strip.background = element_rect(fill = NA, colour = NA)
-  )
-}
+source("../scripts/utils.R")
 ```
 
 
@@ -70,11 +59,8 @@ $$
 \definecolor{wongBlue}{RGB}{0, 114, 178}
 \definecolor{wongOrange}{RGB}{213, 94, 0}
 \definecolor{wongPurple}{RGB}{204, 121, 167}
-\definecolor{colA}{RGB}{255, 221, 85}
-\definecolor{colB}{RGB}{148, 78, 223}
-\definecolor{colC}{RGB}{63, 179, 178}
-\definecolor{colGpe1}{RGB}{127, 23, 14}
-\definecolor{colGpe0}{RGB}{27, 149, 224}
+\definecolor{colGpe1}{RGB}{0, 160, 138}
+\definecolor{colGpe0}{RGB}{242, 173, 0}
 $$
 
 ## Data Generating Process {#sec-dgp}
@@ -114,12 +100,25 @@ $$
 $$
 where $Y_i{\bigl(a, X_i{(1)}\bigr)}$ is the potential outcome under treatment $a$ with mediator values $ X_i{(1)}$ and $Y_i{\bigl(a, X_i{(0)}\bigr)}$ is the potential outcome also under treatment $a$ with mediator values $X_i^{(0)}$.
 
-@pearl2001 refers to $\delta_i{(a)}$ as the natural indirect effect.
+@pearl2001direct refers to $\delta_i{(a)}$ as the natural indirect effect.
 
 :::
 
 
-As noted by @imai2010identification, under treatment status $a$, we only observe $X_i{(1-a)}$ and we never observe $X_i{(1-a)}$. Using optimal transport, we will build the unobserved value, the counterfactual.
+As noted by @imai2010identification, under treatment status $a$, we only observe $X_i{(a)}$ and we never observe $X_i{(1-a)}$. Using optimal transport, we will build the unobserved value, the counterfactual.
+
+:::{.callout-tip icon=false}
+
+### Here
+
+Here, with the current DGP, we have:
+$$
+\begin{cases}
+  \delta_i(0) = a_1(X_{1,i}(1) - X_{1,i}(0)) + a_2(X_{2,i}(1)-X_{2,i}(0))\\
+  \delta_i(1) = a_1(X_{1,i}(1) - X_{1,i}(0)) + a_2(X_{2,i}(1)-X_{2,i}(0))
+\end{cases}
+$$
+:::
 
 :::{.callout-note}
 
@@ -135,10 +134,24 @@ $$
 $$ {#eq-acme}
 :::
 
+:::{.callout-tip icon=false}
+
+### Here
+
+Here, we have:
+
+$$
+\begin{cases}
+  \bar{\delta}(0) = (a_1+a2)(\mu_1-\mu_0)\\
+  \bar{\delta}(1) = (a_1+a2)(\mu_1-\mu_0)
+\end{cases}
+$$
+:::
+
 
 :::{.callout-note}
 
-### Natural Direct Effect (@pearl2001, @imai2010identification)
+### Natural Direct Effect (@pearl2001direct, @imai2010identification)
 
 The natural direct effect writes:
 $$
@@ -146,6 +159,21 @@ $$
 $$ {#eq-nde}
 
 Hence, it represents the direct effect of the treatment for a given level of the mediator.
+
+:::
+
+:::{.callout-tip icon=false}
+
+### Here
+
+Here, we have:
+
+$$
+\begin{cases}
+  \zeta_i{(0)} = a_0\\
+  \zeta_i{(1)} = a_0\\
+\end{cases}
+$$
 
 :::
 
@@ -161,6 +189,23 @@ $$ {#eq-tce}
 
 :::
 
+
+:::{.callout-tip icon=false}
+
+### Here
+
+Here, we have:
+
+$$
+\tau_i = a_1(X_{1,i}(1) - X_{1,i}(0)) + a_2(X_{2,i}(1)-X_{2,i}(0)) + a_0
+$$
+and
+
+$$
+\bar{\delta}=(a_1+a_2)(\mu_1-\mu_0) + a0
+$$
+
+:::
 
 
 ```{r generate-first-example}
@@ -254,216 +299,10 @@ gen_data <- function(n = 500,
 ```
 
 
-## A Closer Look at Overlapping
 
-Let us consider two examples:
+## Counterfactuals {#sec-cf}
 
-1. Large overlap: $\mu_0=-.5$, $\mu_1=.5$, the rest of the parameters are the same as those presented above.
-2. Limited overlap: $\mu_0=-1.5$, $\mu_1=1.5$, the rest of the parameters are the same as those presented above.
-
-
-```{r}
-#| code-fold: true
-#| code-summary: Codes to create the Figure.
-#| message: false
-#| warning: false
-#| fig-height: 2.3
-#| fig-width: 4.6
-#| fig-cap: Level curves of the two densities of $\boldsymbol{X} \\mid A=a$ in the toy example, and associated propensities. The white area correponds to $x$ where the propensity score is in $[1\%,99\%]$. The <span style="color:#1b95e0;">blue area</span> corresponds to $P[A=1 \\mid \boldsymbol{X}] < 1\%$, the <span style="color:#7F170E;">red area</span> corresponds to areas where $P[A=1 \\mid \boldsymbol{X}] > 99\%$.
-#| label: fig-level-curves-overlap
-
-# First example
-mu0 <- -.5
-mu1 <- .5
-r0 <- +.7
-r1 <- -.5
-a <- 1
-p1 <- .5
-Mu0 <- rep(mu0, 2)
-Mu1 <- rep(mu1, 2)
-Sig0 <- matrix(c(1, r0, r0, 1), 2, 2)
-Sig1 <- matrix(c(1, r1, r1, 1), 2, 2)
-
-u <- seq(-10, 10, length = 161)
-dxy <- expand_grid(X1 = u, X2 = u)
-
-d0 <- dmnorm(as.matrix(dxy), mean = a * Mu0, varcov = Sig0)
-d1 <- dmnorm(as.matrix(dxy), mean = a * Mu1, varcov = Sig1)
-
-z0 <- matrix(d0, nrow = length(u))
-z1 <- matrix(d1, nrow = length(u))
-
-par(mar = c(2.1, 2.1, 0.1, 0.1), mfrow = c(1,2))
-x_lim <- c(-3, 3)
-y_lim <- c(-4, 4)
-
-plot(NA,NA, 
-     xlim = x_lim, ylim = y_lim, 
-     xlab = "", ylab = "", pch = NA,
-     family = font_family
-)
-title(xlab = "X1", ylab="X2", line=2, cex.lab=1.2, family = font_family)
-
-
-
-# posterior probability of class 1 (using Bayes' theorem)
-posterior <- (p1 * d1) / ((1-p1) * d0 + p1 * d1)
-# reshape for plotting
-post_matrix <- matrix(posterior, nrow = length(u), byrow = FALSE)
-
-lvl <- c(.01, .99)
-
-# contour(
-# u, u, post_matrix, levels = lvl, drawlabels = TRUE,
-# col = "blue", lty = 3, lwd = 2,
-# xlab = "X1", ylab = "X2", main = "Region where 0.01 ≤ P(A|X) ≤ 0.99"
-# )
-
-# extract contour lines
-contours <- contourLines(u, u, post_matrix, levels = lvl)
-param_dens <- 35
-cl <- contours
-for (i in 1:length(cl)) {
-  if (cl[[i]]$x[2] < cl[[i]]$x[1]) {
-    cl[[i]]$x <- rev(cl[[i]]$x)
-    cl[[i]]$y <- rev(cl[[i]]$y)
-  }
-}
-
-# Bottom-left
-polygon(
-  c(cl[[1]]$x, 10, -10, -10),
-  c(cl[[1]]$y, -10, -10, 10),
-  col=scales::alpha(colGpe0, .9), density = param_dens,
-  border = NA
-)
-# Upper-right
-polygon(
-  c(cl[[2]]$x, 10, 10, -10),
-  c(cl[[2]]$y, -10, 10, 10),
-  col=scales::alpha(colGpe0, .9), density = param_dens,
-  border = NA
-)
-# Upper-left
-polygon(
-  c(cl[[3]]$x, 10, -10, -10),
-  c(cl[[3]]$y, 10, 10, -10),
-  col=scales::alpha(colGpe1, .9), density = param_dens,
-  border = NA
-)
-# Bottom-right
-polygon(
-  c(cl[[4]]$x, 10, 10, -10),
-  c(cl[[4]]$y, 10, -10, -10),
-  col=scales::alpha(colGpe1, .9), density = param_dens,
-  border = NA
-)
-
-contour_lwr <- cl[sapply(cl, function(x) x$level == lvl[1])]
-contour_upr <- contours[sapply(cl, function(x) x$level == lvl[2])]
-for (c in contour_lwr) lines(c$x, c$y, col = "gray30", lty = 1)
-for (c in contour_upr) lines(c$x, c$y, col = "gray30", lty = 1)
-
-# Add contour lines
-contour(u, u, z0, add = TRUE, lwd = 1, col = colGpe0, family = font_family, labcex = 1)
-contour(u, u, z1, add = TRUE, lwd = 1, col = colGpe1, family = font_family, labcex = 1)
-
-# Second example
-mu0 <- -1.5
-mu1 <- 1.5
-r0 <- +.7
-r1 <- -.5
-a <- 1
-p1 <- .5
-Mu0 <- rep(mu0, 2)
-Mu1 <- rep(mu1, 2)
-Sig0 <- matrix(c(1, r0, r0, 1), 2, 2)
-Sig1 <- matrix(c(1, r1, r1, 1), 2, 2)
-
-u <- seq(-10, 10, length = 161)
-dxy <- expand_grid(X1 = u, X2 = u)
-
-d0 <- dmnorm(as.matrix(dxy), mean = a * Mu0, varcov = Sig0)
-d1 <- dmnorm(as.matrix(dxy), mean = a * Mu1, varcov = Sig1)
-
-z0 <- matrix(d0, nrow = length(u))
-z1 <- matrix(d1, nrow = length(u))
-
-# x_lim <- y_lim <- c(-3.5, 3.5)
-x_lim <- c(-3, 3)
-y_lim <- c(-4, 4)
-
-plot(NA,NA, 
-     xlim = x_lim, ylim = y_lim, 
-     xlab = "", ylab = "", pch = NA,
-     family = font_family
-)
-title(xlab = "X1", ylab="X2", line=2, cex.lab=1.2, family = font_family)
-# posterior probability of class 1 (using Bayes' theorem)
-posterior <- (p1 * d1) / ((1-p1) * d0 + p1 * d1)
-# reshape for plotting
-post_matrix <- matrix(posterior, nrow = length(u), byrow = FALSE)
-
-lvl <- c(.01, .99)
-
-# contour(
-# u, u, post_matrix, levels = lvl, drawlabels = TRUE,
-# col = "blue", lty = 3, lwd = 2,
-# xlab = "X1", ylab = "X2", main = "Region where 0.01 ≤ P(A|X) ≤ 0.99"
-# )
-
-# extract contour lines
-contours <- contourLines(u, u, post_matrix, levels = lvl)
-
-cl <- contours
-for (i in 1:length(cl)) {
-  if (cl[[i]]$x[2] < cl[[i]]$x[1]) {
-    cl[[i]]$x <- rev(cl[[i]]$x)
-    cl[[i]]$y <- rev(cl[[i]]$y)
-  }
-}
-
-# Bottom-left
-polygon(
-  c(cl[[1]]$x, 10, -10, -10),
-  c(cl[[1]]$y, -10, -10, 10),
-  col=scales::alpha(colGpe0, .9), density = param_dens,
-  border = NA
-)
-# Upper-right
-polygon(
-  c(cl[[2]]$x, 10, 10, -10),
-  c(cl[[2]]$y, -10, 10, 10),
-  col=scales::alpha(colGpe0, .9), density = param_dens,
-  border = NA
-)
-# Upper part (wrong but not for the cropped image)
-polygon(
-  c(cl[[3]]$x, 10, 10, -10),
-  c(cl[[3]]$y, -10, 10, 10),
-  col=scales::alpha(colGpe1, .9), density = param_dens,
-  border = NA
-)
-
-contour_lwr <- cl[sapply(cl, function(x) x$level == lvl[1])]
-contour_upr <- contours[sapply(cl, function(x) x$level == lvl[2])]
-for (c in contour_lwr) lines(c$x, c$y, col = "gray30", lty = 1)
-for (c in contour_upr) lines(c$x, c$y, col = "gray30", lty = 1)
-
-# Add contour lines
-contour(u, u, z0, add = TRUE, lwd = 1, col = colGpe0, family = font_family, labcex = 1)
-contour(u, u, z1, add = TRUE, lwd = 1, col = colGpe1, family = font_family, labcex = 1)
-
-p <- recordPlot()
-pdf(paste0(path, "gauss-ex-level-curves-overlap.pdf"), width = 4.6, height = 4.6/2)
-replayPlot(p)
-dev.off()
-```
-
-
-## Counterfactuals
-
-Let us build counterfactuals for individuals from `r colorize("group 0", colGpe0)`. We will consider the following methods:
+Let us build counterfactuals for individuals from `r colorize("group 0", colGpe0)`, and for individuals from `r colorize("group 1", colGpe1)`. We will consider the following methods:
 
 - Multivariate Optimal Transport (since we know the parameters of the two Gaussians),
 - Sequential Optimal Transport.
@@ -471,6 +310,8 @@ Let us build counterfactuals for individuals from `r colorize("group 0", colGpe0
 ### Optimal Transport
 
 ```{r lobrary-expm}
+#| message: false
+#| warning: false
 library(expm)
 ```
 
@@ -488,23 +329,23 @@ We define the function `compute_ot_map()`{.R} to compute the optimal mapping.
 
 ```{r define-compute_ot_map}
 #' Optimal transport mapping between two Gaussian distributions 
-#'  (from \eqn{\mathcal{N}(\mu_0, \Sigma_0)} to 
-#'  \eqn{\mathcal{N}(\mu_1, \Sigma_1)})
+#'  (from \eqn{\mathcal{N}(\mu_{\text{source}}, \Sigma_{\text{source}})} to 
+#'   \eqn{\mathcal{N}(\mu_{\text{target}}, \Sigma_{\text{target}})})
 #'  
-#' @param mu0 Means of the bivariate Gaussian in group 0.
-#' @param sigma0 Variance-covariance matrix of the bivariate Gaussian in group 0.
-#' @param mu1  Means of the bivariate Gaussian in group0.
-#' @param sigma1 Variance-covariance matrix of the bivariate Gaussian in group 1.
-compute_ot_map <- function(mu0, sigma0, mu1, sigma1) {
+#' @param mu_source Mean vector of the source Gaussian.
+#' @param sigma_source Covariance matrix of the source Gaussian.
+#' @param mu_target Mean vector of the target Gaussian.
+#' @param sigma_target Covariance matrix of the target Gaussian.
+compute_ot_map <- function(mu_source, sigma_source, mu_target, sigma_target) {
+  sqrt_sigma_source <- sqrtm(sigma_source)
+  sqrt_sigma_source_inv <- solve(sqrt_sigma_source)
   
-  sqrt_sigma0 <- sqrtm(sigma0)
-  sqrt_sigma0_inv <- solve(sqrt_sigma0)
-  inner <- sqrt_sigma0 %*% sigma1 %*% sqrt_sigma0
+  inner <- sqrt_sigma_source %*% sigma_target %*% sqrt_sigma_source
   sqrt_inner <- sqrtm(inner)
-
-  A <- sqrt_sigma0_inv %*% sqrt_inner %*% sqrt_sigma0_inv
   
-  list(A = A, shift = mu1 - A %*% mu0)
+  A <- sqrt_sigma_source_inv %*% sqrt_inner %*% sqrt_sigma_source_inv
+  
+  list(A = A, shift = mu_target - A %*% mu_source)
 }
 ```
 
@@ -523,22 +364,38 @@ apply_ot_transport <- function(X, mapping) {
 ```
 
 
-Since we generated the data, we know the exact transport plan to transport individuals from `r colorize("group 0", colGpe0)` to `r colorize("group 1", colGpe1)`.
-```{r}
+Since we generated the data, we know the exact transport plan to transport individuals from `r colorize("group 0", colGpe0)` to `r colorize("group 1", colGpe1)`. We also know the exact transport plan to transport individuals from `r colorize("group 1", colGpe1)` to `r colorize("group 0", colGpe0)`.
+```{r define-ot_map_0_to_1}
 Sigma0 <- matrix(c(1, r0, r0, 1), 2, 2)
 Sigma1 <- matrix(c(1, r1, r1, 1), 2, 2)
 Mu0 <- rep(a * mu0, 2)
 Mu1 <- rep(a * mu1, 2)
-ot_map <- compute_ot_map(mu0 = Mu0, sigma0 = Sigma0, mu1 = Mu1, sigma1 = Sigma1)
+# Mapping from group 0 to group 1
+ot_map_0_to_1 <- compute_ot_map(
+  mu_source = Mu0, sigma_source = Sigma0, 
+  mu_target = Mu1, sigma_target = Sigma1
+)
+# Mapping from group 1 to group 0
+ot_map_1_to_0 <- compute_ot_map(
+  mu_source = Mu1, sigma_source = Sigma1, 
+  mu_target = Mu0, sigma_target = Sigma0
+)
 ```
 
-We apply the transport map to the `r colorize("untreated units", colGpe0)` (A = 0)
-
-```{r}
+We apply the transport map to the `r colorize("untreated units", colGpe0)` (A = 0).
+```{r define-X0_t}
 X0 <- as.matrix(df[df$A == 0, c("X1", "X2")])
-X0_t <- apply_ot_transport(X = X0, mapping = ot_map)
+X0_t <- apply_ot_transport(X = X0, mapping = ot_map_0_to_1)
 colnames(X0_t) <- c(c("X1", "X2"))
 ```
+
+And to the transport map to the `r colorize("treated units", colGpe1)` (A = 1).
+```{r}
+X1 <- as.matrix(df[df$A == 1, c("X1", "X2")])
+X1_t <- apply_ot_transport(X = X1, mapping = ot_map_1_to_0)
+colnames(X1_t) <- c(c("X1", "X2"))
+```
+
 
 Let us visualize the transported individuals. First, we define the function `draw_ellipse()`{.R} which will allow us to plot the 95% confidence ellipse in both groups.
 
@@ -574,20 +431,21 @@ The initial points and the `r colorize("transported values", colGpet)` are shown
 ```{r}
 #| code-fold: true
 #| code-summary: Codes to create the Figure.
-#| fig-cap: !expr glue::glue("500 points in each group drawn from bivariates Gaussian distributions and <span style='color:{c2};'>transported values</span> from <span style='color:{c0};'>group 0</span> to <span style='color:{c1};'>group 1</span>, using optimal transport.", c0 = colGpe0, c1 = colGpe1, c2 = colGpet)
+#| fig-cap: !expr glue::glue("500 points in each group drawn from bivariates Gaussian distributions and <span style='color:{c2};'>transported values</span> from <span style='color:{c0};'>group 0</span> to <span style='color:{c1};'>group 1</span> (left), and from <span style='color:{c1};'>group 1</span> to <span style='color:{c0};'>group 0</span> (righr), using optimal transport.", c0 = colGpe0, c1 = colGpe1, c2 = colGpet)
 #| label: fig-gaussian-ot
 #| warning: false
 #| message: false
-par(mar = c(2.1, 2.1, 0.1, 0.1))
+par(mar = c(2.1, 2.1, 2.1, 0.1), mfrow = c(1, 2))
 x_lim <- c(-4, 4)
 y_lim <- c(-4, 4)
 
+# From 0 to 1
 plot(X0, 
      pch = 16, 
      col = adjustcolor(colGpe0, alpha = .3), 
      xlim = x_lim, ylim = y_lim, 
      xlab = "", ylab = "",
-     main = "",
+     main = "OT: from A=0 to A=1",
      family = font_family
 )
 title(xlab = "X1", ylab="X2", line=2, cex.lab=1.2, family = font_family)
@@ -608,17 +466,45 @@ Sig0 <- matrix(c(1, r0, r0, 1), 2, 2)
 Sig1 <- matrix(c(1, r1, r1, 1), 2, 2)
 
 # Covariance of transported points (via OT map)
-Sigma0_transport <- ot_map$A %*% Sig0 %*% t(ot_map$A)
+Sigma0_transport <- ot_map_0_to_1$A %*% Sig0 %*% t(ot_map_0_to_1$A)
 
 # Add ellipses
 draw_ellipse(Mu0, Sig0, col = colGpe0, lty = 2)
 draw_ellipse(Mu1, Sig1, col = colGpe1, lty = 2)
 draw_ellipse(Mu1, Sigma0_transport, col = colGpet, lty = 2)
+
+# From 1 to 0
+plot(X0, 
+     pch = 16, 
+     col = adjustcolor(colGpe0, alpha = .3), 
+     xlim = x_lim, ylim = y_lim, 
+     xlab = "", ylab = "",
+     main = "OT: from A=0 to A=1",
+     family = font_family
+)
+title(xlab = "X1", ylab="X2", line=2, cex.lab=1.2, family = font_family)
+points(X1, col = adjustcolor(colGpe1, alpha = .3), pch = 16)
+points(X1_t, col = adjustcolor(colGpet, alpha = .3), pch = 17)
+
+# Add arrows from original to transported
+arrows(
+  x0 = X1$X1, y0 = X1$X2,
+  x1 = X1_t[, 1], y1 = X1_t[, 2],
+  length = 0.05, col = adjustcolor("gray", alpha = .3)
+)
+
+# Covariance of transported points (via OT map)
+Sigma0_transport <- ot_map_1_to_0$A %*% Sig1 %*% t(ot_map_1_to_0$A)
+
+# Add ellipses
+draw_ellipse(Mu0, Sig0, col = colGpe0, lty = 2)
+draw_ellipse(Mu1, Sig1, col = colGpe1, lty = 2)
+draw_ellipse(Mu0, Sigma0_transport, col = colGpet, lty = 2)
 ```
 
 ### Sequential Transport
 
-We will now transport individuals from `r colorize("group 0", colGpe0)` to `r colorize("group 1", colGpe1)` using sequential transport. The results are sensitive to the ordering within the sequence. We will thus consider both ordering here:
+We will now transport individuals using sequential transport. The results are sensitive to the ordering within the sequence. We will thus consider both ordering here:
 
 - a first marginal univariate optimal transport along the first dimension ($X_1$), then a conditional transport for the second dimension ($X_2 \mid X_1)$: `sequential_transport_12()`{.R},
 - a first marginal univariate optimal transport along the second dimension ($X_2$), then a conditional transport for the first dimension ($X_1 \mid X_2)$: `sequential_transport_21()`{.R},
@@ -711,25 +597,34 @@ X1 <- as.matrix(df[df$A == 1, c("X1", "X2")])
 
 We then transport from `r colorize("group 0", colGpe0)` to group `r colorize("group 1", colGpe1)` with sequential transport, first transporting $X_1$ then $X_2 | X_1$.
 
-
-```{r define-X1_st_12}
+```{r define-X0_st_12}
 X0_st_12 <- sequential_transport_12(
   X = X0, M_source = Mu0, S_source = Sig0, M_target = Mu1, S_target = Sig1
 )
 ```
 
-:::{.callout-warning}
+We do the same but for units in `r colorize("group 1", colGpe1)` to `r colorize("group 0", colGpe0)`.
 
-Since we want to build counterfactuals for individuals from `r colorize("group 0", colGpe0)` (A=0), the source distribution is indeed that of the units in `r colorize("group 0", colGpe0)` and the target distribution in that of the units in  `r colorize("group 1", colGpe1)`.
-
-:::
+```{r define-X1_st_12}
+X1_st_12 <- sequential_transport_12(
+  X = X1, M_source = Mu1, S_source = Sig1, M_target = Mu0, S_target = Sig0
+)
+```
 
 
 We also transport from `r colorize("group 0", colGpe0)` to group `r colorize("group 1", colGpe1)` with sequential transport, first transporting $X_1$ then $X_1 | X_2$.
 
-```{r define-X1_st_21}
+```{r define-X0_st_21}
 X0_st_21 <- sequential_transport_21(
   X = X0, M_source = Mu0, S_source = Sig0, M_target = Mu1, S_target = Sig1
+)
+```
+
+We do the same but for units in `r colorize("group 1", colGpe1)` to `r colorize("group 0", colGpe0)`.
+
+```{r define-X1_st_21}
+X1_st_21 <- sequential_transport_21(
+  X = X1, M_source = Mu1, S_source = Sig1, M_target = Mu0, S_target = Sig0
 )
 ```
 
@@ -738,19 +633,21 @@ Again, we can visualize the results on a scatter plot (@fig-gaussian-seq-ot-x1-x
 ```{r}
 #| code-fold: true
 #| code-summary: Codes to create the Figure.
-#| fig-cap: !expr glue::glue("500 points in each group drawn from bivariates Gaussian distributions and <span style='color:{c2};'>transported values</span> from <span style='color:{c0};'>group 0</span> to <span style='color:{c1};'>group 1</span>, using sequential optimal transport, first transporting $X_1$, then $X_2 \\mid X_1$.", c0 = colGpe0, c1 = colGpe1, c2 = colGpet)
+#| fig-cap: !expr glue::glue("500 points in each group drawn from bivariates Gaussian distributions and <span style='color:{c2};'>transported values</span> from <span style='color:{c0};'>group 0</span> to <span style='color:{c1};'>group 1</span> (left), and from <span style='color:{c1};'>group 1</span> to <span style='color:{c0};'>group 0</span> (right), using sequential optimal transport, first transporting $X_1$, then $X_2 \\mid X_1$ (top), and first transporting $X_2$, then $X_1 \\mid X_2$ (bottom).", c0 = colGpe0, c1 = colGpe1, c2 = colGpet)
 #| label: fig-gaussian-seq-ot-x1-x2
 #| warning: false
 #| message: false
+#| fig-width: 6
+#| fig-height: 6
 # Prepare data for the plot
 X0 <- df[df$A == 0, c("X1", "X2")]
 X1 <- df[df$A == 1, c("X1", "X2")]
 
-par(mar = c(2.1, 2.1, 1.8, 0.1), mfrow = c(1,2))
+par(mar = c(2.1, 2.1, 2.1, 0.1), mfrow = c(2,2))
 x_lim <- c(-4, 4)
 y_lim <- c(-4, 4)
 
-# X1 then X2
+# From 0 to 1, X1 then X2----
 plot(
   X0, 
   pch = 16, 
@@ -761,7 +658,7 @@ plot(
   family = font_family
 )
 title(xlab = "X1", ylab="X2", line=2, cex.lab=1.2, family = font_family)
-title(main = "X1 then X2", line=.5, cex.lab=1.2, family = font_family)
+title(main = "A=0 to A=1, X1 then X2", line=.5, cex.lab=1.2, family = font_family)
 points(X1, col = adjustcolor(colGpe1, alpha = .3), pch = 16)
 points(X0_st_12, col = adjustcolor(colGpet, alpha = .3), pch = 17)
 
@@ -782,7 +679,8 @@ Sig1 <- matrix(c(1, r1, r1, 1), 2, 2)
 draw_ellipse(Mu0, Sig0, col = colGpe0, lty = 2)
 draw_ellipse(Mu1, Sig1, col = colGpe1, lty = 2)
 
-# X2 then X1
+
+# From 1 to 0, X1 then X2----
 plot(
   X0, 
   pch = 16, 
@@ -793,7 +691,34 @@ plot(
   family = font_family
 )
 title(xlab = "X1", ylab="X2", line=2, cex.lab=1.2, family = font_family)
-title(main = "X2 then X1", line=.5, cex.lab=1.2, family = font_family)
+title(main = "A=1 to A=0, X1 then X2", line=.5, cex.lab=1.2, family = font_family)
+points(X1, col = adjustcolor(colGpe1, alpha = .3), pch = 16)
+points(X1_st_12, col = adjustcolor(colGpet, alpha = .3), pch = 17)
+
+# Add arrows from original to transported
+arrows(
+  x0 = X1$X1, y0 = X1$X2,
+  x1 = X1_st_12[, 1], y1 = X1_st_12[, 2],
+  length = 0.05, col = adjustcolor("gray", alpha = .3)
+)
+
+# Add ellipses
+draw_ellipse(Mu0, Sig0, col = colGpe0, lty = 2)
+draw_ellipse(Mu1, Sig1, col = colGpe1, lty = 2)
+
+
+# From A=0 to A=1, X2 then X1
+plot(
+  X0, 
+  pch = 16, 
+  col = adjustcolor(colGpe0, alpha = .3), 
+  xlim = x_lim, ylim = y_lim, 
+  xlab = "", ylab = "",
+  main = "",
+  family = font_family
+)
+title(xlab = "X1", ylab="X2", line=2, cex.lab=1.2, family = font_family)
+title(main = "A=0 to A=1, X2 then X1", line=.5, cex.lab=1.2, family = font_family)
 points(X1, col = adjustcolor(colGpe1, alpha = .3), pch = 16)
 points(X0_st_21, col = adjustcolor(colGpet, alpha = .3), pch = 17)
 
@@ -807,9 +732,260 @@ arrows(
 # Add ellipses
 draw_ellipse(Mu0, Sig0, col = colGpe0, lty = 2)
 draw_ellipse(Mu1, Sig1, col = colGpe1, lty = 2)
+
+
+# From A=1 to A=0, X2 then X1
+plot(
+  X0, 
+  pch = 16, 
+  col = adjustcolor(colGpe0, alpha = .3), 
+  xlim = x_lim, ylim = y_lim, 
+  xlab = "", ylab = "",
+  main = "",
+  family = font_family
+)
+title(xlab = "X1", ylab="X2", line=2, cex.lab=1.2, family = font_family)
+title(main = "A=1 to A=0, X2 then X1", line=.5, cex.lab=1.2, family = font_family)
+points(X1, col = adjustcolor(colGpe1, alpha = .3), pch = 16)
+points(X1_st_21, col = adjustcolor(colGpet, alpha = .3), pch = 17)
+
+# Add arrows from original to transported
+arrows(
+  x0 = X1$X1, y0 = X1$X2,
+  x1 = X1_st_21[, 1], y1 = X1_st_21[, 2],
+  length = 0.05, col = adjustcolor("gray", alpha = .3)
+)
+
+# Add ellipses
+draw_ellipse(Mu0, Sig0, col = colGpe0, lty = 2)
+draw_ellipse(Mu1, Sig1, col = colGpe1, lty = 2)
+
 ```
 
-## Causal Effect
+```{r, eval=FALSE}
+#| code-fold: true
+#| code-summary: Codes for the Figure in the paper
+#| message: false
+#| warning: false
+filename <- "gaussian-transport-0to1"
+tikz(paste0("figs/", filename, ".tex"), width = 2.2, height = 1)
+
+layout(matrix(1:3, ncol = 3), width = c(1, rep(.9, 2)))
+par(mar = c(2.1, 2.1, 2.1, 0.1))
+x_lim <- c(-4, 4)
+y_lim <- c(-4, 4)
+cex_pts <- .5
+alpha_arrows <- .2
+length_arrow <- 0
+
+# From 0 to 1, with OT
+plot(X0, 
+     pch = 16, cex = cex_pts,
+     col = adjustcolor(colGpe0, alpha = .3), 
+     xlim = x_lim, ylim = y_lim, 
+     xlab = "", ylab = "",
+     main = "",
+     family = font_family,
+     axes = FALSE
+)
+axis(1, at = -3:3)
+axis(2, at = -3:3)
+
+title(xlab = "X1", ylab="X2", line=2, cex.lab=1, family = font_family)
+title(main = "OT", line=.5, cex.main = 1, family = font_family, font.main=1)
+points(X1, col = adjustcolor(colGpe1, alpha = .3), pch = 16, cex = cex_pts)
+points(X0_t, col = adjustcolor(colour_methods[["OT"]], alpha = .3), pch = 17, cex = cex_pts)
+
+# Add arrows from original to transported
+arrows(
+  x0 = X0$X1, y0 = X0$X2,
+  x1 = X0_t[, 1], y1 = X0_t[, 2],
+  length = length_arrow, col = adjustcolor("gray", alpha = alpha_arrows)
+)
+
+# True mean and covariance (scaled by 'a')
+Mu0 <- rep(a * mu0, 2)
+Mu1 <- rep(a * mu1, 2)
+Sig0 <- matrix(c(1, r0, r0, 1), 2, 2)
+Sig1 <- matrix(c(1, r1, r1, 1), 2, 2)
+
+# Covariance of transported points (via OT map)
+Sigma0_transport <- ot_map_0_to_1$A %*% Sig0 %*% t(ot_map_0_to_1$A)
+
+# Add ellipses
+draw_ellipse(Mu0, Sig0, col = colGpe0, lty = 2)
+draw_ellipse(Mu1, Sig1, col = colGpe1, lty = 2)
+
+par(mar = c(2.1, 1.1, 2.1, 0.1))
+
+# From 0 to 1, X1 then X2----
+plot(
+  X0, 
+  pch = 16, cex = cex_pts,
+  col = adjustcolor(colGpe0, alpha = .3), 
+  xlim = x_lim, ylim = y_lim, 
+  xlab = "", ylab = "",
+  main = "",
+  family = font_family,
+  axes = FALSE
+)
+axis(1, at = -3:3)
+
+title(xlab = "X1", ylab="X2", line=2, cex.lab=1, family = font_family)
+title(main = "ST(1)", line=.5, cex.main = 1, family = font_family, font.main=1)
+points(X1, col = adjustcolor(colGpe1, alpha = .3), pch = 16, cex = cex_pts)
+points(X0_st_12, col = adjustcolor(colour_methods[["seq_1"]], alpha = .3), pch = 17, cex = cex_pts)
+
+# Add arrows from original to transported
+arrows(
+  x0 = X0$X1, y0 = X0$X2,
+  x1 = X0_st_12[, 1], y1 = X0_st_12[, 2],
+  length = length_arrow, col = adjustcolor("gray", alpha = .4)
+)
+
+# Add ellipses
+draw_ellipse(Mu0, Sig0, col = colGpe0, lty = 2)
+draw_ellipse(Mu1, Sig1, col = colGpe1, lty = 2)
+
+
+# From A=0 to A=1, X2 then X1----
+plot(
+  X0, 
+  pch = 16, cex = cex_pts,
+  col = adjustcolor(colGpe0, alpha = alpha_arrows), 
+  xlim = x_lim, ylim = y_lim, 
+  xlab = "", ylab = "",
+  main = "",
+  family = font_family,
+  axes = FALSE
+)
+axis(1, at = -3:3)
+title(xlab = "X1", ylab="X2", line=2, cex.lab=1, family = font_family)
+title(main = "ST(2)", line=.5, cex.main = 1, family = font_family, font.main=1)
+points(X1, col = adjustcolor(colGpe1, alpha = .3), pch = 16, cex = cex_pts)
+points(X0_st_21, col = adjustcolor(colour_methods[["seq_2"]], alpha = .3), pch = 17, cex = cex_pts)
+
+# Add arrows from original to transported
+arrows(
+  x0 = X0$X1, y0 = X0$X2,
+  x1 = X0_st_21[, 1], y1 = X0_st_21[, 2],
+  length = length_arrow, col = adjustcolor("gray", alpha = alpha_arrows)
+)
+
+# Add ellipses
+draw_ellipse(Mu0, Sig0, col = colGpe0, lty = 2)
+draw_ellipse(Mu1, Sig1, col = colGpe1, lty = 2)
+
+# legend(
+#   "bottomright",
+#   pch = c(16, 16, 17),
+#   col = c(colGpe0, colGpe1, colGpet),
+#   legend = c("$A=0$", "$A=1$", "Transp."),
+#   bty = "n"
+# )
+
+dev.off()
+plot_to_pdf(filename = filename, path = "./figs/", keep_tex = FALSE, crop = FALSE)
+
+```
+
+
+### Illustration for a Single Unit
+
+```{r}
+#| message: false
+#| warning: false
+export_tikz <- FALSE
+# Focus on a unit
+i <- 11
+
+X0 <- df[df$A == 0, c("X1", "X2")]
+X1 <- df[df$A == 1, c("X1", "X2")]
+
+if (export_tikz == TRUE) 
+  tikz('figs/gaussian-1-transport.tex', width = 2, height = 2.2)
+
+par(mar = c(2.1, 2.1, 1.8, 0.1))
+x_lim <- c(-4, 4)
+y_lim <- c(-4, 4)
+
+# X1 then X2
+plot(
+  X0, 
+  pch = 16, 
+  col = adjustcolor(colGpe0, alpha = .3), 
+  xlim = x_lim, ylim = y_lim, 
+  xlab = "", ylab = "",
+  main = "",
+  family = font_family
+)
+title(xlab = "X1", ylab="X2", line=2, cex.lab=1.2, family = font_family)
+# title(main = "X1 then X2", line=.5, cex.lab=1.2, family = font_family)
+points(X1, col = adjustcolor(colGpe1, alpha = .3), pch = 16)
+
+# Individual of interest
+points(X0[i, ], col = adjustcolor(colGpe0, alpha = 1), pch = 15, cex = 1.5)
+points(X0_t[i, 1], X0_t[i, 2], col = adjustcolor(colour_methods[["OT"]], alpha = 1), pch = 15, cex = 1.5)
+points(X0_st_12[i, 1], X0_st_12[i, 2], col = adjustcolor(colour_methods[["seq_1"]], alpha = 1), pch = 15, cex = 1.5)
+points(X0_st_21[i, 1], X0_st_21[i, 2], col = adjustcolor(colour_methods[["seq_2"]], alpha = 1), pch = 15, cex = 1.5)
+
+length_arrow <- 0.1
+lwd_arrow <- 2
+# OT
+arrows(
+  x0 = X0$X1[i], y0 = X0$X2[i],
+  x1 = X0_t[i, 1], y1 = X0_t[i, 2],
+  length = length_arrow, col = adjustcolor(colour_methods[["OT"]], alpha = 1),
+  lwd = lwd_arrow, lty = 2
+)
+# Seq OT (1): X_1 first
+points(X0_st_12[i, 1], X0$X2[i], col = adjustcolor(colour_methods[["seq_1"]], alpha = .5), pch = 16, cex = 1.5)
+arrows(
+  x0 = X0$X1[i], y0 = X0$X2[i],
+  x1 = X0_st_12[i, 1], y1 = X0$X2[i],
+  length = length_arrow, col = adjustcolor(colour_methods[["seq_1"]], alpha = 1),
+  lwd = lwd_arrow
+)
+arrows(
+  x0 = X0_st_12[i, 1], y0 = X0$X2[i],
+  x1 = X0_st_12[i, 1], y1 = X0_st_12[i, 2],
+  length = length_arrow, col = adjustcolor(colour_methods[["seq_1"]], alpha = 1),
+  lwd = lwd_arrow
+)
+
+# Seq OT (2): X_2 first
+points(X0$X1[i], X0_st_21[i,2], col = adjustcolor(colour_methods[["seq_2"]], alpha = .5), pch = 16, cex = 1.5)
+arrows(
+  x0 = X0$X1[i], y0 = X0$X2[i],
+  x1 = X0$X1[i], y1 = X0_st_21[i,2],
+  length = length_arrow, col = adjustcolor(colour_methods[["seq_2"]], alpha = 1),
+  lwd = lwd_arrow
+)
+arrows(
+  x0 = X0$X1[i], y0 = X0_st_21[i,2],
+  x1 = X0_st_21[i, 1], y1 = X0_st_21[i, 2],
+  length = length_arrow, col = adjustcolor(colour_methods[["seq_2"]], alpha = 1),
+  lwd = lwd_arrow
+)
+
+legend(
+  "topleft", 
+  legend = c("$x_i$ (Obs.)", "OT", "Seq. OT (1)", "Seq. OT (2)"), 
+  col = c(colGpe0, colour_methods[c("OT", "seq_1", "seq_2")]), 
+  pch = 15, pt.cex = 1.5, cex = 1,
+  bty = "n"
+)
+
+if (export_tikz == TRUE) {
+  dev.off()
+
+  plot_to_pdf(filename = "gaussian-1-transport", path = "./figs/", keep_tex = FALSE, crop = TRUE)
+}
+```
+
+
+
+## Causal Effect {#sec-causal-effects}
 
 We first generate (again) some data, using the DGP presented in @sec-dgp.
 
@@ -823,13 +999,10 @@ df <- gen_data(
 ```
 
 
+
+
 ### With Causal Mediation Analysis
 
-```{r library-mediation}
-#| message: false
-#| warning: false
-library(mediation)
-```
 
 Let us create a dataset, `tb`, with only the binary response (Y), the binary treatment (A), and the two covariates.
 
@@ -842,7 +1015,7 @@ Y_name <- "Y"
 ```
 
 ```{r define-med_mod}
-med_mod <- multimed(
+med_mod <- mediation::multimed(
   outcome = "Y", 
   med.main = "X1", 
   med.alt = "X2", 
@@ -850,6 +1023,12 @@ med_mod <- multimed(
   data = df
 )
 ```
+
+:::{.callout-warning}
+
+We do not load the {mediation} package since it creates multiple conflicts with useful functions from tidyverse (including `select()`{.R}).
+
+:::
 
 
 Let us retrieve $\bar{\delta}(0)$ (average causal mediation effect for $a=0$):
@@ -867,23 +1046,58 @@ We can then compute the total causal effect:
 (tot_effect_med <- delta_0_med + zeta_1_med)
 ```
 
+Let us also retrieve $\bar{\delta}(1)$ (average causal mediation effect for $a=1$) and $\bar{\zeta}(0)$ (average direct effect for $a=0$):
+```{r define-delta_1}
+delta_1_med <- mean((med_mod$d1.lb + med_mod$d1.ub) / 2)
+zeta_0_med <- mean((med_mod$z0.lb + med_mod$z0.ub) / 2)
+c(delta_1_med, zeta_0_med)
+```
+
+
 
 ### With Optimal Transport
 
 We define a function, `causal_effects_cf()`{.R} to compute the causal effect of $A$ on the outcome $Y$, for the treated individuals.
 
 ```{r define-causal_effects_cf}
-#' Average treatment on the treated using counterfactuals.
+#' Estimation of total causal effect using counterfactuals.
 #' 
 #' @param data_untreated Dataset with the untreated units only.
 #' @param data_treated Dataset with the treated units only.
-#' @param data_cf Counterfactuals (untreated had they been treated).
+#' @param data_cf_untreated Counterfactuals for untreated had they been treated.
+#' @param data_cf_treated Counterfactuals for treated had they been untreated.
 #' @param Y_name Name of the column with the outcome variable.
 #' @param A_name Name of the column with the treatment variable.
 #' @param A_untreated Value of the treatment for the untreated units.
+#' 
+#' @returns A list:
+#' - `delta_0_i`: \eqn{\delta_(0)}, individual causal mediation effects for 
+#'   \eqn{a=0} (computed on untreated),
+#' - `delta_0`: \eqn{\bar{\delta}(0)}, average causal mediation effect for 
+#'   \eqn{a=0} (computed on untreated),
+#' - `delta_1_i`: \eqn{\delta_(1)}, individual causal mediation effects for 
+#'   \eqn{a=1} (computed on treated),
+#' - `delta_1`: \eqn{\bar{\delta}(1)}, average causal mediation effect for 
+#'   \eqn{a=1} (computed on treated),
+#' - `zeta_0_i`: \eqn{\zeta_(0)}, individual causal mediation effects for 
+#'   \eqn{a=0} (computed on treaded),
+#' - `zeta_0`: \eqn{\bar{\zeta}(0)}, average causal mediation effect for 
+#'   \eqn{a=0} (computed on treated),
+#' - `zeta_1_i`: \eqn{\zeta_(1)}, individual causal mediation effects for 
+#'   \eqn{a=1} (computed on untreaded),
+#' - `zeta_1`: \eqn{\bar{\zeta}(1)}, average causal mediation effect for 
+#'   \eqn{a=1} (computed on untreated),
+#' - `tot_effect`: \eqb{\tau}: average total effect (\eqn{\bar{\delta}(0) + 
+#'   \bar{\zeta}(1)}).
+#'
+#' @importFrom randomForest randomForest
+#' @importFrom dplyr pull select
+#' @importFrom stats predict
+#' @md
 causal_effects_cf <- function(data_untreated,
                               data_treated,
-                              data_cf,
+                              data_cf_untreated,
+                              data_cf_treated,
                               Y_name,
                               A_name,
                               A_untreated) {
@@ -903,25 +1117,55 @@ causal_effects_cf <- function(data_untreated,
     y = pull(data_treated, !!Y_name)
   )
   
-  # Observed outcome for untreated
-  Y_untreated_obs <- data_untreated |> pull(!!Y_name)
+  # Observed outcome
+  y_untreated_obs <- data_untreated |> pull(!!Y_name)
+  y_treated_obs <- data_treated |> pull(!!Y_name)
   
-  # Natural Indirect Effect
-  delta_0_i <- predict(mu_untreated_model, newdata = data_cf) - Y_untreated_obs
+  # Natural Indirect Effect, using predictions
+  delta_0_i <- predict(mu_untreated_model, newdata = data_cf_untreated) -
+    predict(mu_untreated_model)
   delta_0 <- mean(delta_0_i)
-  # Natural Direct Effect
-  zeta_1_i <- predict(mu_treated_model, newdata = data_cf) - 
-    predict(mu_untreated_model, newdata = data_cf)
+  delta_1_i <- predict(mu_treated_model) - 
+    predict(mu_treated_model, newdata = data_cf_treated)
+  delta_1 <- mean(delta_1_i)
+
+  # Natural Indirect Effect, using observed variables
+  delta_0_i_obs <- predict(mu_untreated_model, newdata = data_cf_untreated) - 
+    y_untreated_obs
+  delta_0_obs <- mean(delta_0_i_obs)
+  delta_1_i_obs <- y_treated_obs - 
+    predict(mu_treated_model, newdata = data_cf_treated)
+  delta_1_obs <- mean(delta_1_i_obs)
+  
+  # Natural Direct Effect (only predictions)
+  zeta_0_i <- predict(mu_treated_model, newdata = data_cf_treated) -
+    predict(mu_untreated_model, newdata = data_cf_treated)
+  zeta_0 <- mean(zeta_0_i)
+  
+  zeta_1_i <- predict(mu_treated_model, newdata = data_cf_untreated) - 
+    predict(mu_untreated_model, newdata = data_cf_untreated)
   zeta_1 <- mean(zeta_1_i)
+  
   # Total Causal Effect for treated
-  tot_effect <- delta_0 + zeta_1
+  tot_effect <- delta_0 + zeta_1  
+  tot_effect_obs <- delta_0_obs + zeta_1
+  
   
   list(
     delta_0_i = delta_0_i,
-    delta_0 = delta_0,
+    delta_1_i = delta_1_i,
+    zeta_0_i = zeta_0_i,
     zeta_1_i = zeta_1_i,
+    delta_0_i_obs = delta_0_i_obs,
+    delta_1_i_obs = delta_1_i_obs,
+    delta_0 = delta_0,
+    delta_1 = delta_1,
+    zeta_0 = zeta_0,
     zeta_1 = zeta_1,
-    tot_effect = tot_effect
+    delta_0_obs = delta_0_obs,
+    delta_1_obs = delta_1_obs,
+    tot_effect = tot_effect,
+    tot_effect_obs = tot_effect_obs
   )
 }
 ```
@@ -943,7 +1187,8 @@ tb_treated <- tb |> filter(!!sym(A_name) != !!A_untreated)
 causal_effects_ot <- causal_effects_cf(
   data_untreated = tb_untreated, 
   data_treated = tb_treated,
-  data_cf = as_tibble(X0_t), 
+  data_cf_untreated = as_tibble(X0_t),
+  data_cf_treated = as_tibble(X1_t),
   Y_name = Y_name, 
   A_name = A_name, 
   A_untreated = A_untreated
@@ -951,8 +1196,11 @@ causal_effects_ot <- causal_effects_cf(
 
 cbind(
   delta_0 = causal_effects_ot$delta_0,
-  zeta_1 = causal_effects_ot$zeta_1, 
-  tot_effect = causal_effects_ot$tot_effect
+  zeta_1 = causal_effects_ot$zeta_1,
+  delta_1 = causal_effects_ot$delta_1,
+  zeta_0 = causal_effects_ot$zeta_0,
+  tot_effect = causal_effects_ot$tot_effect,
+  tot_effect_obs = causal_effects_ot$tot_effect_obs
 )
 ```
 
@@ -964,8 +1212,11 @@ We apply the same function as that used with the counterfactuals obtained with o
 causal_effect_sot_12 <- causal_effects_cf(
   data_untreated = tb_untreated, 
   data_treated = tb_treated,
-  data_cf = as_tibble(X0_st_12) |> magrittr::set_colnames(c("X1", "X2")),
-  Y_name = Y_name, A_name = A_name, A_untreated = A_untreated
+  data_cf_untreated = as_tibble(X0_st_12) |> magrittr::set_colnames(c("X1", "X2")),
+  data_cf_treated = as_tibble(X1_st_12) |> magrittr::set_colnames(c("X1", "X2")),
+  Y_name = Y_name, 
+  A_name = A_name, 
+  A_untreated = A_untreated
 )
 ```
 
@@ -974,8 +1225,11 @@ And for the counterfactuales obtained by sequential transport where we first tra
 causal_effect_sot_21 <- causal_effects_cf(
   data_untreated = tb_untreated, 
   data_treated = tb_treated,
-  data_cf = as_tibble(X0_st_21) |> magrittr::set_colnames(c("X1", "X2")),
-  Y_name = Y_name, A_name = A_name, A_untreated = A_untreated
+  data_cf_untreated = as_tibble(X0_st_21) |> magrittr::set_colnames(c("X1", "X2")),
+  data_cf_treated = as_tibble(X1_st_21) |> magrittr::set_colnames(c("X1", "X2")),
+  Y_name = Y_name, 
+  A_name = A_name, 
+  A_untreated = A_untreated
 )
 ```
 
@@ -986,25 +1240,984 @@ causal_effect_sot_21 <- causal_effects_cf(
 ```{r summary}
 tribble(
   ~Method, ~Name, ~Value,
+  "Theoretical", "delta(0)", (a1+a2) * (mu1-mu0),
+  "Theoretical", "delta(1)", (a1+a2) * (mu1-mu0),
+  "Theoretical", "zeta(0)", a0,
+  "Theoretical", "zeta(1)", a0,
+  "Theoretical", "tau", (a1+a2) * (mu1-mu0) + a0,
+  #
   "Mediation", "delta(0)", delta_0_med,
+  "Mediation", "delta(1)", delta_1_med,
+  "Mediation", "zeta(0)", zeta_0_med,
   "Mediation", "zeta(1)", zeta_1_med,
   "Mediation", "tau", tot_effect_med,
   #
   "OT", "delta(0)", causal_effects_ot$delta_0,
+  "OT", "delta(1)", causal_effects_ot$delta_1,
+  "OT", "zeta(0)", causal_effects_ot$zeta_0,  
   "OT", "zeta(1)", causal_effects_ot$zeta_1,
   "OT", "tau", causal_effects_ot$tot_effect,
   #
+  "OT (Obs)", "delta(0)", causal_effects_ot$delta_0_obs,
+  "OT (Obs)", "delta(1)", causal_effects_ot$delta_1_obs,
+  "OT (Obs)", "tau", causal_effects_ot$tot_effect_obs,
+  #
   "SOT (1)", "delta(0)", causal_effect_sot_12$delta_0,
+  "SOT (1)", "delta(1)", causal_effect_sot_12$delta_1,
+  "SOT (1)", "zeta(0)", causal_effect_sot_12$zeta_0,  
   "SOT (1)", "zeta(1)", causal_effect_sot_12$zeta_1,
   "SOT (1)", "tau", causal_effect_sot_12$tot_effect,
   #
+  "SOT (1) (Obs)", "delta(0)", causal_effect_sot_12$delta_0_obs,
+  "SOT (1) (Obs)", "delta(1)", causal_effect_sot_12$delta_1_obs,
+  "SOT (1) (Obs)", "tau", causal_effect_sot_12$tot_effect_obs,
+  #
   "SOT (2)", "delta(0)", causal_effect_sot_21$delta_0,
+  "SOT (2)", "delta(1)", causal_effect_sot_21$delta_1,
+  "SOT (2)", "zeta(0)", causal_effect_sot_21$zeta_0,
   "SOT (2)", "zeta(1)", causal_effect_sot_21$zeta_1,
-  "SOT (2)", "tau", causal_effect_sot_21$tot_effect
+  "SOT (2)", "tau", causal_effect_sot_21$tot_effect,
+  #
+  "SOT (2) (Obs)", "delta(0)", causal_effect_sot_21$delta_0_obs,
+  "SOT (2) (Obs)", "delta(1)", causal_effect_sot_21$delta_1_obs,
+  "SOT (2) (Obs)", "tau", causal_effect_sot_21$tot_effect_obs
 ) |> 
   pivot_wider(names_from = "Name", values_from = "Value")
 ```
+### Some Individuals
 
-In the next page, @sec-gaussian-ex-simul, we run some simulations using the same DGP, where we make the distance between the two distributions vary.
 
+Let us have a look at some individuals. We focus on the one with the predicted $\tau_i$ estimated using Optimal Transport which is the closest to the theoretical value, and the one that is the farthest. Let us get the theoretical values:
+```{r define-tau_theo}
+(tau_theo <- (a1 + a2) * (mu1 - mu0) + a0)
+(tau_med <- tot_effect_med)
+(tau_ot <- causal_effects_ot$tot_effect)
+(tau_sot_12 <- causal_effect_sot_12$tot_effect)
+(tau_sot_21 <- causal_effect_sot_21$tot_effect)
+```
+
+We create a table that contains the coordinates of individuals from `r colorize("group 0", colGpe0)`), their transported coordinates (using OT, and sequential transport), and their estimated values for $\delta_i(0)$, $\zeta_i(1)$, and $\tau_i$, obtained with OT and with sequential transport.
+
+```{r define-tb_indiv_0}
+tb_indiv_0 <- 
+  tibble(
+    X1 = X0$X1,
+    X2 = X0$X2,
+    X1_t = X0_t[, 1], # with OT
+    X2_t = X0_t[, 2], # idem
+    X1_sot_12 = X0_st_12[, 1], # with Seq T (1)
+    X2_sot_12 = X0_st_12[, 2], # idem
+    X1_sot_21 = X0_st_21[, 1], # with Seq T (2)
+    X2_sot_21 = X0_st_21[, 2], # idem
+    # OT
+    delta_0_i_ot = causal_effects_ot$delta_0_i,
+    zeta_1_i_ot = causal_effects_ot$zeta_1_i,
+    # ST (1)
+    delta_0_i_sot_12 = causal_effect_sot_12$delta_0_i,
+    zeta_1_i_sot_12 = causal_effect_sot_12$zeta_1_i,
+    # ST (2)
+    delta_0_i_sot_21 = causal_effect_sot_21$delta_0_i,
+    zeta_1_i_sot_21 = causal_effect_sot_21$zeta_1_i
+  ) |> 
+  # Total causal effect
+  mutate(
+    tau_i_ot = delta_0_i_ot + zeta_1_i_ot,
+    tau_i_sot_12 = delta_0_i_sot_12 + zeta_1_i_sot_12,
+    tau_i_sot_21 = delta_0_i_ot + zeta_1_i_sot_21
+  ) |> 
+  # Distance to the theoretical value
+  mutate(
+    tau_i_ot_dist = abs(tau_i_ot - tau_theo),
+    tau_i_sot_12_dist = abs(tau_i_sot_12 - tau_theo),
+    tau_i_sot_21_dist = abs(tau_i_sot_21 - tau_theo)
+  )
+```
+
+In that table, we identify the two untreated units of interest.
+```{r}
+ind_closest <- order(tb_indiv_0$tau_i_ot_dist)[1]
+ind_farthest <- rev(order(tb_indiv_0$tau_i_ot_dist))[1]
+```
+
+Their coordinates are shown in @tab-individual-causal-effects-toy-obs, as well as the coordinates of their counterfactuals.
+
+```{r}
+#| code-fold: true
+#| code-summary: Codes to create the Table.
+#| message: false
+#| warning: false
+#| tbl-cap: Coordinates of two untreated units before and after transport.
+#| label: tab-individual-causal-effects-toy-obs
+format_num <- function(x) scales::number(x, accuracy = 0.1)
+
+tb_indiv_0_short <- 
+  tb_indiv_0 |> 
+  select(-ends_with("dist")) |> 
+  mutate(
+    across(where(is.numeric),
+           ~format_num(.x)
+    )
+  ) |> 
+  mutate(
+    obs_type = case_when(
+      row_number() == ind_closest ~ "Closest",
+      row_number() == ind_farthest ~ "Farthest",
+      TRUE ~ "Other"
+    )
+  ) |> 
+  filter(obs_type != "Other") |> 
+  mutate(
+    coord = str_c("(", X1, ", ", X2, ")"),
+    coord_OT = str_c("(", X1_t, ", ", X2_t, ")"),
+    coord_ST1 = str_c("(", X1_sot_12, ", ", X2_sot_12, ")"),
+    coord_ST2 = str_c("(", X1_sot_21, ", ", X2_sot_21, ")")
+  ) |> 
+  select(
+    -X1, -X2, -X1_t, -X2_t, -X1_sot_12, -X2_sot_12, -X1_sot_21, -X2_sot_21
+  ) |> 
+  pivot_longer(
+    cols = c(
+      -obs_type, -coord, -coord_OT, -coord_ST1, -coord_ST2
+    )
+  ) |> 
+  mutate(
+    type = case_when(
+      str_detect(name, "^delta") ~ "delta",
+      str_detect(name, "^zeta") ~ "zeta",
+      str_detect(name, "^tau") ~ "tau",
+      TRUE ~ NA_character_
+    ),
+    type = factor(
+      type, 
+      levels = c("delta", "zeta", "tau")
+    ),
+    method = case_when(
+      str_detect(name, "_med$") ~ "CM",
+      str_detect(name, "_ot$") ~ "OT",
+      str_detect(name, "_sot_12$") ~ "ST(1)",
+      str_detect(name, "sot_21$") ~ "ST(2)",
+      TRUE ~ ""
+    )
+  ) |> 
+  select(-name) |> 
+  pivot_wider(
+    names_from = type, values_from = value
+  )
+tb_indiv_0_short |> 
+  group_by(obs_type) |> 
+  slice_head(n=1) |> 
+  select(coord, coord_OT, coord_ST1, coord_ST2) |> 
+  kableExtra::kbl(booktabs = TRUE)
+```
+
+
+The estimation of the direct, indirect and total effects are reported in @tab-individual-causal-effects-toy, depending on the method used to create the counterfactual.
+
+```{r}
+#| code-fold: true
+#| code-summary: Codes to create the Table.
+#| message: false
+#| warning: false
+#| tbl-cap: Estimated values of $\delta_i(0)$, $\zeta_i(1)$, and $\tau_i$ for the two individuals, depending on the transport method.
+#| label: tab-individual-causal-effects-toy
+tb_indiv_0_short |> 
+  select(method, delta, zeta, tau) |> 
+  kableExtra::kbl(booktabs = TRUE)
+```
+
+
+
+```{r}
+#| code-fold: true
+#| code-summary: Codes to create the Figure
+export_tikz <- FALSE
+file_name <- "gaussian-tau-two-indiv"
+
+if (export_tikz == TRUE)
+  tikz(paste0("figs/", file_name, ".tex"), width = 3.2, height = 1.5)
+
+# par(mar = c(2.1, 2.1, .1, .1), mfrow = c(1, 2))
+layout(matrix(c(1, 2), nrow = 1, byrow = TRUE), widths = c(10,8.1))
+par(mar = c(2.1, 2.1, .1, .1))
+## Closest----
+cex_pts <- .5
+plot(
+  X0, 
+  pch = 16, 
+  col = adjustcolor(colGpe0, alpha = .3), 
+  xlim = x_lim, ylim = y_lim, 
+  xlab = "", ylab = "",
+  main = "",
+  family = font_family,
+  axes = FALSE,
+  cex = cex_pts
+)
+axis(1, at = -3:3, labels = TRUE)
+axis(2, at = -3:3, labels = TRUE)
+title(xlab = "X1", ylab="X2", line=2, cex.lab=1.2, family = font_family)
+points(X1, col = adjustcolor(colGpe1, alpha = .3), pch = 16, cex = cex_pts)
+
+# Individuals of interest
+# Arrows to OT
+arrows(
+  x0 = X0$X1[c(ind_closest)],
+  y0 = X0$X2[c(ind_closest)],
+  x1 = X0_t[c(ind_closest), "X1"], 
+  y1 = X0_t[c(ind_closest), "X2"],
+  length = length_arrow, col = adjustcolor(colour_methods[["OT"]], alpha = 1),
+  lwd = lwd_arrow, lty = 2
+)
+# Seq OT (1): X_1 first
+# points(
+#   X0_st_12[c(ind_closest), 1], 
+#   X0$X2[c(ind_closest)], 
+#   col = adjustcolor(colour_methods[["seq_1"]], alpha = .5), pch = 16, cex = 1
+# )
+arrows(
+  x0 = X0$X1[c(ind_closest)], 
+  y0 = X0$X2[c(ind_closest)],
+  x1 = X0_st_12[c(ind_closest), 1], 
+  y1 = X0$X2[c(ind_closest)],
+  length = length_arrow, col = adjustcolor(colour_methods[["seq_1"]], alpha = .5),
+  lwd = lwd_arrow
+)
+arrows(
+  x0 = X0_st_12[c(ind_closest), 1], 
+  y0 = X0$X2[c(ind_closest)],
+  x1 = X0_st_12[c(ind_closest), 1], 
+  y1 = X0_st_12[c(ind_closest), 2],
+  length = length_arrow, col = adjustcolor(colour_methods[["seq_1"]], alpha = .5),
+  lwd = lwd_arrow
+)
+# Seq OT (2): X_2 first
+# points(
+#   X0$X1[c(ind_closest)], 
+#   X0_st_21[c(ind_closest),2], 
+#   col = adjustcolor(colour_methods[["seq_2"]], alpha = .5), pch = 16, cex = 1
+# )
+arrows(
+  x0 = X0$X1[c(ind_closest)], 
+  y0 = X0$X2[c(ind_closest)],
+  x1 = X0$X1[c(ind_closest)], 
+  y1 = X0_st_21[c(ind_closest),2],
+  length = length_arrow, col = adjustcolor(colour_methods[["seq_2"]], alpha = .5),
+  lwd = lwd_arrow
+)
+arrows(
+  x0 = X0$X1[c(ind_closest)], 
+  y0 = X0_st_21[c(ind_closest),2],
+  x1 = X0_st_21[c(ind_closest), 1], 
+  y1 = X0_st_21[c(ind_closest), 2],
+  length = length_arrow, col = adjustcolor(colour_methods[["seq_2"]], alpha = .5),
+  lwd = lwd_arrow
+)
+
+# Individuals
+points(
+  tb_indiv_0$X1[c(ind_closest)], 
+  tb_indiv_0$X2[c(ind_closest)], 
+  col = "black", pch = c(15), cex = 1
+)
+# Transported values for those individuals (OT)
+points(
+  X0_t[c(ind_closest), "X1"], 
+  X0_t[c(ind_closest), "X2"], 
+  col = colour_methods[["OT"]], pch = c(15), cex = 1
+)
+# With Sequential transport (1)
+points(
+  X0_st_12[c(ind_closest), 1], 
+  X0_st_12[c(ind_closest), 2], 
+  col = adjustcolor(colour_methods[["seq_1"]], alpha = 1), pch = 15, cex = 1
+)
+# With Sequential transport (2)
+points(
+  X0_st_21[c(ind_closest), 1], 
+  X0_st_21[c(ind_closest), 2], 
+  col = adjustcolor(colour_methods[["seq_2"]], alpha = 1), pch = 15, cex = 1
+)
+
+
+if (export_tikz == FALSE) {
+  lab_points_ot <- latex2exp::TeX(
+    paste0(
+      "$\\tau_i^{OT}=", 
+      round(tb_indiv_0$tau_i_ot[c(ind_closest)], 1), "$"
+    )
+  )
+  lab_points_sot_12 <- latex2exp::TeX(
+    paste0(
+      "$\\tau_i^{ST(1)}=", 
+      round(tb_indiv_0$tau_i_sot_12[c(ind_closest)], 1), "$"
+    )
+  )
+  lab_points_sot_21 <- latex2exp::TeX(
+    paste0(
+      "$\\tau_i^{ST(2)}=", 
+      round(tb_indiv_0$tau_i_sot_21[c(ind_closest)], 1), "$"
+    )
+  )
+} else {
+  lab_points_ot <- paste0(
+    "$\\tau_i^{\\textnormal{OT}}=", 
+    round(tb_indiv_0$tau_i_ot[c(ind_closest)], 1), "$"
+  )
+  lab_points_sot_12 <- paste0(
+    "$\\tau_i^{\\textnormal{ST}(1)}=", 
+    round(tb_indiv_0$tau_i_sot_12[c(ind_closest)], 1), "$"
+  )
+  lab_points_sot_21 <- paste0(
+    "$\\tau_i^{\\textnormal{ST}(2)}=", 
+    round(tb_indiv_0$tau_i_sot_21[c(ind_closest)], 1), "$"
+  )
+}
+# Initial point
+text(
+  x = X0_t[c(ind_closest), "X1"], 
+  y = X0_t[c(ind_closest), "X2"] + .5, 
+  labels = lab_points_ot,
+  col = colour_methods[["OT"]]
+)
+text(
+  x = X0_st_12[c(ind_closest), 1], 
+  y = X0_st_12[c(ind_closest), 2] + 1, 
+  labels = lab_points_sot_12,
+  col = colour_methods[["seq_1"]]
+)
+text(
+  x = X0_st_21[c(ind_closest), 1], 
+  y = X0_st_21[c(ind_closest), 2] - 1, 
+  labels = lab_points_sot_21,
+  col = colour_methods[["seq_2"]]
+)
+
+## Farthest----
+par(mar = c(2.1, .1, .1, .1))
+plot(
+  X0, 
+  pch = 16, 
+  col = adjustcolor(colGpe0, alpha = .3), 
+  xlim = x_lim, ylim = y_lim, 
+  xlab = "", ylab = "",
+  main = "",
+  family = font_family,
+  axes = FALSE,
+  cex = cex_pts
+)
+axis(1, at = -3:3, labels = TRUE)
+# axis(2, at = -3:3, labels = TRUE)
+title(xlab = "X1", ylab="X2", line=2, cex.lab=1.2, family = font_family)
+points(X1, col = adjustcolor(colGpe1, alpha = .3), pch = 16, cex = cex_pts)
+
+# Individuals of interest
+# Arrows to OT
+arrows(
+  x0 = X0$X1[c(ind_farthest)],
+  y0 = X0$X2[c(ind_farthest)],
+  x1 = X0_t[c(ind_farthest), "X1"], 
+  y1 = X0_t[c(ind_farthest), "X2"],
+  length = length_arrow, col = adjustcolor(colour_methods[["OT"]], alpha = 1),
+  lwd = lwd_arrow, lty = 2
+)
+# Seq OT (1): X_1 first
+# points(
+#   X0_st_12[c(ind_farthest), 1], 
+#   X0$X2[c(ind_farthest)], 
+#   col = adjustcolor(colour_methods[["seq_1"]], alpha = .5), pch = 16, cex = 1
+# )
+arrows(
+  x0 = X0$X1[c(ind_farthest)], 
+  y0 = X0$X2[c(ind_farthest)],
+  x1 = X0_st_12[c(ind_farthest), 1], 
+  y1 = X0$X2[c(ind_farthest)],
+  length = length_arrow, col = adjustcolor(colour_methods[["seq_1"]], alpha = .5),
+  lwd = lwd_arrow
+)
+arrows(
+  x0 = X0_st_12[c(ind_farthest), 1], 
+  y0 = X0$X2[c(ind_farthest)],
+  x1 = X0_st_12[c(ind_farthest), 1], 
+  y1 = X0_st_12[c(ind_farthest), 2],
+  length = length_arrow, col = adjustcolor(colour_methods[["seq_1"]], alpha = .5),
+  lwd = lwd_arrow
+)
+# Seq OT (2): X_2 first
+# points(
+#   X0$X1[c(ind_farthest)], 
+#   X0_st_21[c(ind_farthest),2], 
+#   col = adjustcolor(colour_methods[["seq_2"]], alpha = .5), pch = 16, cex = 1
+# )
+arrows(
+  x0 = X0$X1[c(ind_farthest)], 
+  y0 = X0$X2[c(ind_farthest)],
+  x1 = X0$X1[c(ind_farthest)], 
+  y1 = X0_st_21[c(ind_farthest),2],
+  length = length_arrow, col = adjustcolor(colour_methods[["seq_2"]], alpha = .5),
+  lwd = lwd_arrow
+)
+arrows(
+  x0 = X0$X1[c(ind_farthest)], 
+  y0 = X0_st_21[c(ind_farthest),2],
+  x1 = X0_st_21[c(ind_farthest), 1], 
+  y1 = X0_st_21[c(ind_farthest), 2],
+  length = length_arrow, col = adjustcolor(colour_methods[["seq_2"]], alpha = .5),
+  lwd = lwd_arrow
+)
+
+# Individuals
+points(
+  tb_indiv_0$X1[c(ind_farthest)], 
+  tb_indiv_0$X2[c(ind_farthest)], 
+  col = "black", pch = c(15), cex = 1
+)
+# Transported values for those individuals (OT)
+points(
+  X0_t[c(ind_farthest), "X1"], 
+  X0_t[c(ind_farthest), "X2"], 
+  col = colour_methods[["OT"]], pch = c(15), cex = 1
+)
+# With Sequential transport (1)
+points(
+  X0_st_12[c(ind_farthest), 1], 
+  X0_st_12[c(ind_farthest), 2], 
+  col = adjustcolor(colour_methods[["seq_1"]], alpha = 1), pch = 15, cex = 1
+)
+# With Sequential transport (2)
+points(
+  X0_st_21[c(ind_farthest), 1], 
+  X0_st_21[c(ind_farthest), 2], 
+  col = adjustcolor(colour_methods[["seq_2"]], alpha = 1), pch = 15, cex = 1
+)
+
+
+if (export_tikz == FALSE) {
+  lab_points_ot <- latex2exp::TeX(
+    paste0(
+      "$\\tau_i^{OT}=", 
+      round(tb_indiv_0$tau_i_ot[c(ind_farthest)], 1), "$"
+    )
+  )
+  lab_points_sot_12 <- latex2exp::TeX(
+    paste0(
+      "$\\tau_i^{ST(1)}=", 
+      round(tb_indiv_0$tau_i_sot_12[c(ind_farthest)], 1), "$"
+    )
+  )
+  lab_points_sot_21 <- latex2exp::TeX(
+    paste0(
+      "$\\tau_i^{ST(2)}=", 
+      round(tb_indiv_0$tau_i_sot_21[c(ind_farthest)], 1), "$"
+    )
+  )
+} else {
+  lab_points_ot <- paste0(
+    "$\\tau_i^{\\textnormal{OT}}=", 
+    round(tb_indiv_0$tau_i_ot[c(ind_farthest)], 1), "$"
+  )
+  lab_points_sot_12 <- paste0(
+    "$\\tau_i^{\\textnormal{ST}(1)}=", 
+    round(tb_indiv_0$tau_i_sot_12[c(ind_farthest)], 1), "$"
+  )
+  lab_points_sot_21 <- paste0(
+    "$\\tau_i^{\\textnormal{ST}(2)}=", 
+    round(tb_indiv_0$tau_i_sot_21[c(ind_farthest)], 1), "$"
+  )
+}
+# Initial point
+text(
+  x = X0_t[c(ind_farthest), "X1"], 
+  y = X0_t[c(ind_farthest), "X2"] + .5, 
+  labels = lab_points_ot,
+  col = colour_methods[["OT"]]
+)
+text(
+  x = X0_st_12[c(ind_farthest), 1], 
+  y = X0_st_12[c(ind_farthest), 2] + .5, 
+  labels = lab_points_sot_12,
+  col = colour_methods[["seq_1"]]
+)
+text(
+  x = X0_st_21[c(ind_farthest), 1] - 1.5, 
+  y = X0_st_21[c(ind_farthest), 2] - 1, 
+  labels = lab_points_sot_21,
+  col = colour_methods[["seq_2"]]
+)
+
+if (export_tikz == TRUE) {
+  dev.off()
+  plot_to_pdf(filename = file_name, path = "./figs/", keep_tex = FALSE, crop = FALSE)
+}
+```
+
+
+
+
+## Monte-Carlo Simulations
+
+Let us perform Monte-Carlo simulations to observe the stability of the previous estimations. We define a function, `sim_f()`{.R}, to perform three steps:
+
+1. Generate a sample from the DGP shown in @sec-dgp,
+2. Build the counterfactuals using OT and Sequential transport as in @sec-cf,
+3. Compute the causal effects as in @sec-causal-effects.
+
+
+```{r sim_f}
+#| code-fold: true
+#| code-summary: The `sim_f()`{.R} function.
+sim_f <- function(n = 500,
+                  mu0, 
+                  mu1, 
+                  r0, 
+                  r1, 
+                  a, 
+                  seed = NULL) {
+  
+  if (!is.null(seed)) set.seed(seed)
+  
+  # 1. Generate data
+  df <- gen_data(
+    n = 500, 
+    mu0 = mu0, mu1 = mu1, 
+    r0 = r0, r1 = r1, a = a, 
+    seed = seed
+  )
+  
+  # 2. Building Counterfactuals
+  
+  ## With Optimal Transport
+  # Transporting map for source: group 1, target: group 0 (careful here)
+  Sigma0 <- matrix(c(1, r0, r0, 1), 2, 2)
+  Sigma1 <- matrix(c(1, r1, r1, 1), 2, 2)
+  Mu0 <- rep(a * mu0, 2)
+  Mu1 <- rep(a * mu1, 2)
+  
+  # Mapping from group 0 to group 1
+  ot_map_0_to_1 <- compute_ot_map(
+    mu_source = Mu0, sigma_source = Sigma0, 
+    mu_target = Mu1, sigma_target = Sigma1
+  )
+  # Mapping from group 1 to group 0
+  ot_map_1_to_0 <- compute_ot_map(
+    mu_source = Mu1, sigma_source = Sigma0, 
+    mu_target = Mu0, sigma_target = Sigma0
+  )  
+
+  # Apply transport map to treated units (A = 1)
+  X0 <- as.matrix(df[df$A == 0, c("X1", "X2")])
+  X1 <- as.matrix(df[df$A == 1, c("X1", "X2")])
+  X0_t <- apply_ot_transport(X = X0, mapping = ot_map_0_to_1)
+  colnames(X0_t) <- c(c("X1", "X2"))
+  X1_t <- apply_ot_transport(X = X1, mapping = ot_map_1_to_0)
+  colnames(X1_t) <- c(c("X1", "X2"))
+  
+  ## With Sequential Transport
+  # Transport from group 0 to group 1: X1 then X2 | X1
+  X0_st_12 <- sequential_transport_12(
+    X = X0, M_source = Mu0, S_source = Sigma0, M_target = Mu1, S_target = Sigma1
+  )
+  # Transport from group 1 to group 0: X1 then X2 | X1
+  X1_st_12 <- sequential_transport_12(
+    X = X1, M_source = Mu1, S_source = Sigma1, M_target = Mu0, S_target = Sigma0
+  )
+  # Transport from group 0 to group 1: X2 then X1 | X2
+  X0_st_21 <- sequential_transport_21(
+    X = X0, M_source = Mu0, S_source = Sigma0, M_target = Mu1, S_target = Sigma1
+  )
+  # Transport from group 1 to group 0: X2 then X1 | X2
+  X1_st_21 <- sequential_transport_21(
+    X = X1, M_source = Mu1, S_source = Sigma1, M_target = Mu0, S_target = Sigma0
+  )
+  
+  # 3. Measuring Total Causal Effect
+  tb <- df[, c("Y", "A", "X1", "X2")]
+  A_name <- "A"
+  A_untreated <- 0
+  Y_name <- "Y"
+  
+  # Causal Mediation Analysis
+  med_mod <- mediation::multimed(
+    outcome = "Y", 
+    med.main = "X1", 
+    med.alt = "X2", 
+    treat = "A", 
+    data = tb
+  )
+  delta_0_med <- mean((med_mod$d0.lb + med_mod$d0.ub) / 2)
+  delta_1_med <- mean((med_mod$d1.lb + med_mod$d1.ub) / 2)
+  zeta_0_med <- mean((med_mod$z0.lb + med_mod$z0.ub) / 2)
+  zeta_1_med <- mean((med_mod$z1.lb + med_mod$z1.ub) / 2)
+  tot_effect_med <- delta_0_med + zeta_1_med
+  
+  # With OT counterfactuals
+  tb_untreated <- tb |> filter(!!sym(A_name) == !!A_untreated)
+  tb_treated <- tb |> filter(!!sym(A_name) != !!A_untreated)
+  
+  causal_effects_ot <- causal_effects_cf(
+    data_untreated = tb_untreated, 
+    data_treated = tb_treated,
+    data_cf_untreated = as_tibble(X0_t),
+    data_cf_treated = as_tibble(X1_t),
+    Y_name = Y_name, 
+    A_name = A_name, 
+    A_untreated = A_untreated
+  )
+  # With Sequential Transport counterfactuals
+  causal_effect_sot_12 <- causal_effects_cf(
+    data_untreated = tb_untreated, 
+    data_treated = tb_treated,
+    data_cf_untreated = as_tibble(X0_st_12) |> magrittr::set_colnames(c("X1", "X2")),
+    data_cf_treated = as_tibble(X1_st_12) |> magrittr::set_colnames(c("X1", "X2")),
+    Y_name = Y_name, 
+    A_name = A_name, 
+    A_untreated = A_untreated
+  )
+  causal_effect_sot_21 <- causal_effects_cf(
+    data_untreated = tb_untreated, 
+    data_treated = tb_treated,
+    data_cf_untreated = as_tibble(X0_st_21) |> magrittr::set_colnames(c("X1", "X2")),
+    data_cf_treated = as_tibble(X1_st_21) |> magrittr::set_colnames(c("X1", "X2")),
+    Y_name = Y_name, 
+    A_name = A_name, 
+    A_untreated = A_untreated
+  )
+
+  tibble(
+    # Mediation
+    delta_0_med = delta_0_med,
+    delta_1_med = delta_1_med,
+    zeta_0_med = zeta_0_med,
+    zeta_1_med = zeta_1_med,
+    tot_effect_med = tot_effect_med,
+    # OT
+    delta_0_ot = causal_effects_ot$delta_0,
+    delta_1_ot = causal_effects_ot$delta_1,
+    delta_0_ot_obs = causal_effects_ot$delta_0_obs,
+    delta_1_ot_obs = causal_effects_ot$delta_1_obs,
+    zeta_0_ot = causal_effects_ot$zeta_0,
+    zeta_1_ot = causal_effects_ot$zeta_1,
+    tot_effect_ot = causal_effects_ot$tot_effect,
+    tot_effect_ot_obs = causal_effects_ot$tot_effect_obs,
+    # SOT 12
+    delta_0_sot_12 = causal_effect_sot_12$delta_0,
+    delta_1_sot_12 = causal_effect_sot_12$delta_1,
+    delta_0_sot_12_obs = causal_effect_sot_12$delta_0_obs,
+    delta_1_sot_12_obs = causal_effect_sot_12$delta_1_obs,
+    zeta_0_sot_12 = causal_effect_sot_12$zeta_0,
+    zeta_1_sot_12 = causal_effect_sot_12$zeta_1,
+    tot_effect_sot_12 = causal_effect_sot_12$tot_effect,
+    tot_effect_sot_12_obs = causal_effect_sot_12$tot_effect_obs,
+    # SOT 21
+    delta_0_sot_21 = causal_effect_sot_21$delta_0,
+    delta_1_sot_21 = causal_effect_sot_21$delta_1,
+    delta_0_sot_21_obs = causal_effect_sot_21$delta_0_obs,
+    delta_1_sot_21_obs = causal_effect_sot_21$delta_1_obs,
+    zeta_0_sot_21 = causal_effect_sot_21$zeta_0,
+    zeta_1_sot_21 = causal_effect_sot_21$zeta_1,
+    tot_effect_sot_21 = causal_effect_sot_21$tot_effect,
+    tot_effect_sot_21_obs = causal_effect_sot_21$tot_effect_obs,
+    n = n,
+    seed = seed,
+    mu0 = mu0,
+    mu1 = mu1,
+    r0 = r0,
+    r1 = r1,
+    a = a
+  )
+}
+```
+
+
+The simulations can be run in parallel, as follows.
+
+```{r mc-simul, eval=FALSE}
+# This chunk takes about XX minutes to run.
+# We do not evaluate when compiling the document.
+# Instead, we load previously obtained results.
+library(pbapply)
+library(parallel)
+ncl <- detectCores()-1
+(cl <- makeCluster(ncl))
+
+clusterEvalQ(cl, {
+  library(tidyverse)
+  library(mnormt)
+  library(expm)
+  library(randomForest)
+}) |>
+  invisible()
+
+clusterExport(
+  cl = cl, c(
+    "gen_data", "compute_ot_map", "apply_ot_transport",
+    "sequential_transport_12", "sequential_transport_21",
+    "causal_effects_cf", "sim_f"
+  )
+)
+
+res_sim <- pbapply::pblapply(1:200, function(seed) {
+  sim_f(n = 500, mu0 = -1, mu1 = +1, r0 = +.7, r1 = -.5, a = 1, seed = seed)
+}, cl = cl)
+
+stopCluster(cl)
+res_sim <- list_rbind(res_sim)
+
+save(res_sim, file = "../output/res_sim-gaussian-mc-a1.rda")
+```
+
+We load previously obtained results:
+```{r load-results-simul}
+load("../output/res_sim-gaussian-mc-a1.rda")
+```
+
+
+```{r}
+#| code-fold: true
+#| code-summary: Codes to create the Figure.
+#| fig-cap: Estimated values of $\bar{\delta}(0)$, $\bar{\zeta}(1)$, and $\bar{\tau}$ across 200 Monte Carlo simulations using Causal Mediation (CM), Optimal Transport (OT), and Sequential Transport ST (1) (moving $X_1$ first) and ST (2) (moving $X_2$ first). The red vertical bar denotes the theoretical value.
+#| label: fig-gaussian-hist-mc
+#' @parma metric_name Name of the metric (e.g., "tot_effect_ot")
+#' @param method_label Label of the method (for title, e.g., "OT")
+plot_hist_sim <- function(metric_name, 
+                          method_label,
+                          x_lim = NULL,
+                          y_axis = TRUE,
+                          export_tikz = FALSE) {
+  # type <- match.arg(type)
+  type <- case_when(
+    str_detect(metric_name, "^delta") ~ "delta",
+    str_detect(metric_name, "^zeta") ~ "zeta",
+    str_detect(metric_name, "^tot_effect") & !str_detect(metric_name, "obs$") ~ "tau",
+    str_detect(metric_name, "^tot_effect") & str_detect(metric_name, "obs$") ~ "theta",
+    TRUE ~ NA_character_
+  )
+  group <- case_when(
+    str_detect(metric_name, "_0_") ~ "0",
+    str_detect(metric_name, "_1_") ~ "1",
+    TRUE ~ ""
+  )
+  
+  if (type == "delta") {
+    title_lab <- paste0("$\\bar{\\delta}_", group, "$, ", method_label)
+  } else if (type == "zeta") {
+    title_lab <- paste0("$\\bar{\\zeta}_", group, "$, ", method_label)
+  } else if (type == "tau") {
+    title_lab <- paste0("$\\bar{\\tau}$, ", method_label)
+  } else {
+    title_lab <- paste0("$\\bar{\\theta}$, ", method_label)
+  }
+  
+  if (export_tikz == FALSE) {
+    title_lab <- latex2exp::TeX(title_lab)
+  }
+  
+  if (group == "0") {
+    fill_col <- colGpe0
+  } else if (group == "1") {
+    fill_col <- colGpe1
+  } else {
+    fill_col <- "gray"
+  }
+  
+  if (is.null(x_lim)) x_lim <- range(res_sim |> pull(!!metric_name))
+  
+  hist(
+    res_sim |> pull(!!metric_name), 
+    main = title_lab,
+    xlab = "",
+    col = adjustcolor(fill_col, alpha = .5),
+    xlim = x_lim,
+    axes = FALSE
+  )
+  axis(1)
+  if (y_axis == TRUE) axis(2)
+  if (type == "delta") {
+    abline(v = (a1+a2)*(mu1-mu0), col = "darkred", lty = 2, lwd = 2)
+  } else if (type == "zeta") {
+    abline(v = a0, col = "darkred", lty = 2, lwd = 2)
+  } else if (type %in% c("tau", "theta")) {
+    abline(v = (a1+a2)*(mu1-mu0) + a0, col = "darkred", lty = 2, lwd = 2)
+  }
+}
+
+
+
+
+export_tikz <- FALSE
+file_name <- "gaussian-hist-mc"
+
+if (export_tikz == TRUE)
+  tikz(paste0("figs/", file_name, ".tex"), width = 2.8, height = 2.8)
+par(mar = c(2.1, 2.1, 2.1, .5), mfrow = c(3,4))
+x_lim <- c(0,5)
+plot_hist_sim(metric_name = "delta_0_med", method_label = "CM", x_lim = x_lim, export_tikz = export_tikz)
+plot_hist_sim(metric_name = "delta_0_ot", method_label = "OT", x_lim = x_lim, export_tikz = export_tikz)
+plot_hist_sim(metric_name = "delta_0_sot_12", method_label = "ST (1)", x_lim = x_lim, export_tikz = export_tikz)
+plot_hist_sim(metric_name = "delta_0_sot_21", method_label = "ST (2)", x_lim = x_lim, export_tikz = export_tikz)
+x_lim <- c(-1,5)
+plot_hist_sim(metric_name = "zeta_1_med", method_label = "CM", x_lim = x_lim, export_tikz = export_tikz)
+plot_hist_sim(metric_name = "zeta_1_ot", method_label = "OT", x_lim = x_lim, export_tikz = export_tikz)
+plot_hist_sim(metric_name = "zeta_1_sot_12", method_label = "ST (1)", x_lim = x_lim, export_tikz = export_tikz)
+plot_hist_sim(metric_name = "zeta_1_sot_21", method_label = "ST (2)", x_lim = x_lim, export_tikz = export_tikz)
+x_lim <- c(3,5)
+plot_hist_sim(metric_name = "tot_effect_med", method_label = "CM", x_lim = x_lim, export_tikz = export_tikz)
+plot_hist_sim(metric_name = "tot_effect_ot", method_label = "OT", x_lim = x_lim, export_tikz = export_tikz)
+plot_hist_sim(metric_name = "tot_effect_sot_12", method_label = "ST (1)", x_lim= x_lim, export_tikz = export_tikz)
+plot_hist_sim(metric_name = "tot_effect_sot_21", method_label = "ST (2)", x_lim= x_lim, export_tikz = export_tikz)
+if (export_tikz == TRUE) {
+  dev.off()
+  plot_to_pdf(filename = file_name, path = "./figs/", keep_tex = FALSE, crop = TRUE)
+}
+```
+
+
+```{r}
+#| code-fold: true
+#| code-summary: Codes to create the Figure.
+#| fig-cap: Estimated values of $\bar{\delta}(1)$, $\bar{\zeta}(0)$, and $\bar{\tau}$ across 200 Monte Carlo simulations using Causal Mediation (CM), Optimal Transport (OT), and Sequential Transport ST (1) (moving $X_1$ first) and ST (2) (moving $X_2$ first). The red vertical bar denotes the theoretical value.
+#| label: fig-gaussian-hist-mc-2
+par(mar = c(2.1, 2.1, 2.1, .5), mfrow = c(3,4))
+x_lim <- c(0,5)
+plot_hist_sim(metric_name = "delta_1_med", method_label = "CM", x_lim = x_lim, export_tikz = export_tikz)
+plot_hist_sim(metric_name = "delta_1_ot", method_label = "OT", x_lim = x_lim, export_tikz = export_tikz)
+plot_hist_sim(metric_name = "delta_1_sot_12", method_label = "ST (1)", x_lim = x_lim, export_tikz = export_tikz)
+plot_hist_sim(metric_name = "delta_1_sot_21", method_label = "ST (2)", x_lim = x_lim, export_tikz = export_tikz)
+x_lim <- c(-1,5)
+plot_hist_sim(metric_name = "zeta_0_med", method_label = "CM", x_lim = x_lim, export_tikz = export_tikz)
+plot_hist_sim(metric_name = "zeta_0_ot", method_label = "OT", x_lim = x_lim, export_tikz = export_tikz)
+plot_hist_sim(metric_name = "zeta_0_sot_12", method_label = "ST (1)", x_lim = x_lim, export_tikz = export_tikz)
+plot_hist_sim(metric_name = "zeta_0_sot_21", method_label = "ST (2)", x_lim = x_lim, export_tikz = export_tikz)
+x_lim <- c(3,5)
+plot_hist_sim(metric_name = "tot_effect_med", method_label = "CM", x_lim = x_lim, export_tikz = export_tikz)
+plot_hist_sim(metric_name = "tot_effect_ot", method_label = "OT", x_lim = x_lim, export_tikz = export_tikz)
+plot_hist_sim(metric_name = "tot_effect_sot_12", method_label = "ST (1)", x_lim= x_lim, export_tikz = export_tikz)
+plot_hist_sim(metric_name = "tot_effect_sot_21", method_label = "ST (2)", x_lim= x_lim, export_tikz = export_tikz)
+```
+
+
+The comparison of the estimates made using observed values for $y$ (whenever observed)
+is shown in @fig-gaussian-hist-mc-3.
+```{r}
+#| code-fold: true
+#| code-summary: Codes to create the Figure.
+#| fig-cap: Estimated values of $\bar{\tau}$ and $\bar{\theta}$ across 200 Monte Carlo simulations using ptimal Transport (OT), and Sequential Transport ST (1) (moving $X_1$ first) and ST (2) (moving $X_2$ first). The red vertical bar denotes the theoretical value.
+#| label: fig-gaussian-hist-mc-3
+par(mar = c(2.1, 2.1, 2.1, .5), mfrow = c(2,3))
+plot_hist_sim(metric_name = "tot_effect_ot", method_label = "OT", x_lim = x_lim, export_tikz = export_tikz)
+plot_hist_sim(metric_name = "tot_effect_sot_12", method_label = "ST (1)", x_lim= x_lim, export_tikz = export_tikz)
+plot_hist_sim(metric_name = "tot_effect_sot_21", method_label = "ST (2)", x_lim= x_lim, export_tikz = export_tikz)
+
+plot_hist_sim(metric_name = "tot_effect_ot_obs", method_label = "OT", x_lim = x_lim, export_tikz = export_tikz)
+plot_hist_sim(metric_name = "tot_effect_sot_12_obs", method_label = "ST (1)", x_lim= x_lim, export_tikz = export_tikz)
+plot_hist_sim(metric_name = "tot_effect_sot_21_obs", method_label = "ST (2)", x_lim= x_lim, export_tikz = export_tikz)
+```
+
+
+We also use violin plots, since exporting these histograms in a two-column format paper is not a good idea.
+
+```{r}
+#| code-fold: true
+#| code-summary: Codes to create the Figure.
+#| fig-cap: Estimated values of $\bar{\delta}(0)$, $\bar{\zeta}(1)$, and $\bar{\tau}$ across 200 Monte Carlo simulations using Causal Mediation (CM), Optimal Transport (OT), and Sequential Transport ST (1) (moving $X_1$ first) and ST (2) (moving $X_2$ first). The red vertical bar denotes the theoretical value.
+#| label: fig-gaussian-violin-mc
+
+export_pdf <- FALSE
+
+
+
+p <- ggplot(
+  data = res_sim |> 
+    select(
+      delta_0_med, delta_0_ot, delta_0_sot_12, delta_0_sot_21,
+      zeta_1_med, zeta_1_ot, zeta_1_sot_12, zeta_1_sot_21,
+      tot_effect_med, tot_effect_ot, tot_effect_sot_12, tot_effect_sot_21
+    ) |> 
+    mutate(row = row_number()) |> 
+    pivot_longer(cols = -row) |> 
+    mutate(
+      type = case_when(
+        str_detect(name, "^delta") ~ "delta",
+        str_detect(name, "^zeta") ~ "zeta",
+        str_detect(name, "^tot_effect") & !str_detect(name, "obs$") ~ "tau",
+        TRUE ~ NA_character_
+      ),
+      type = factor(
+        type, 
+        levels = c("delta", "zeta", "tau"),
+        labels = c("$\\bar{\\delta}(0)$", "$\\bar{\\zeta}(1)$", 
+                   "$\\bar{\\tau}$")
+      ),
+      method = case_when(
+        str_detect(name, "_med$") ~ "CM",
+        str_detect(name, "_ot$") ~ "OT",
+        str_detect(name, "_sot_12$") ~ "ST(1)",
+        str_detect(name, "sot_21$") ~ "ST(2)",
+        TRUE ~ ""
+      ),
+      method = factor(method, levels = rev(c("CM", "OT", "ST(1)", "ST(2)")))
+    )
+) +
+  geom_violin(
+    mapping = aes(x = value, y = method, fill = method),
+    draw_quantiles = c(.25, .5, .75)) +
+  labs(x = NULL, y = NULL)
+
+if (export_pdf == TRUE) {
+  p <- p + 
+    facet_wrap(
+    ~ type, scales = "free_x",
+  )
+} else {
+  p <- p +
+    facet_wrap(
+      ~ type, scales = "free_x",
+      labeller = as_labeller(latex2exp::TeX, default = label_parsed)
+    )
+}
+
+p <- p +
+  geom_vline(
+    data = tibble(
+      type = c("$\\bar{\\delta}(0)$", "$\\bar{\\zeta}(1)$", 
+               "$\\bar{\\tau}$"), 
+      val_theo = c(
+        (a1+a2)*(mu1-mu0),
+        a0,
+        (a1+a2)*(mu1-mu0) + a0
+      )
+    ) |> 
+      mutate(
+        type = factor(
+          type, 
+          levels = c("$\\bar{\\delta}(0)$", "$\\bar{\\zeta}(1)$", 
+                     "$\\bar{\\tau}$")
+        )
+      ),
+    mapping = aes(xintercept = val_theo),
+    colour = "darkred", linetype = "dashed", linewidth = 1
+  ) +
+  scale_fill_manual(
+    NULL, 
+    values = c(
+      "CM" = "gray",
+      "OT" = colour_methods[["OT"]], 
+      "ST(1)" =  colour_methods[["seq_1"]],
+      "ST(2)" =  colour_methods[["seq_2"]]
+    ),
+    guide = "none"
+  ) +
+  theme_paper()
+
+p
+
+if (export_pdf == TRUE) {
+  ggplot2_to_pdf(
+    plot = p, 
+    filename = "gaussian-violin-mc", path = "figs/", 
+    width = 3.3, height = 1.5,
+    crop = TRUE
+  )
+  
+  system(paste0("pdfcrop figs/gaussian-violin-mc.pdf figs/gaussian-violin-mc.pdf"))
+}
+```
 
