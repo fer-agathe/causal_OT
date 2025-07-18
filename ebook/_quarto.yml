@@ -10,6 +10,7 @@ book:
     - index.qmd
     - part: I. Introduction
       chapters:
+        - reminders.qmd
         - gaussian-example.qmd
         - gaussian-example-mc.qmd
     - part: II. Functions for Illustrations
