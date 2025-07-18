@@ -6,6 +6,7 @@
 #' @param weights_0 Matrix of intra-group distances for group 0.
 #' @param weights_1 Matrix of inter-group distances from group 0 to group 1.
 #' @param num_neighbors_q Number of neighbors to use.
+#' @param method Either `"shortsimplex"`, `"sinkhorn"`, or `"OSQP"`.
 #'
 #' @return A vector of counterfactual predicted probabilities.
 compute_counterfactual_probs <- function(i,
@@ -13,7 +14,9 @@ compute_counterfactual_probs <- function(i,
                                          pred_probs_1,
                                          weights_0,
                                          weights_1,
-                                         num_neighbors_q) {
+                                         num_neighbors_q,
+                                         method = c("shortsimplex", "sinkhorn", "OSQP")) {
+  
   # Identify closest neighbours within the same group
   dist_neigh_0 <- weights_0[i, , drop = FALSE]
   # and among the other group
@@ -27,7 +30,8 @@ compute_counterfactual_probs <- function(i,
     X = pred_probs_0[ranks_weights_0, ],
     Y = pred_probs_1[ranks_weights_1, ],
     wx = dist_neigh_0[ranks_weights_0],
-    wy = dist_neigh_1[ranks_weights_1]
+    wy = dist_neigh_1[ranks_weights_1],
+    method = method
   )
   
   # Most likely match under the transport plan
@@ -45,6 +49,7 @@ compute_counterfactual_probs <- function(i,
 #'  within target group.
 #' @param num_neighbors_q Number of neigbors to use for categorical variables.
 #'  Default to the min between 50 and the number of observations in the data.
+#' @param method Either `"shortsimplex"`, `"sinkhorn"`, or `"OSQP"`.
 #' @param cl A cluster object, created by package parallel. If `NULL` (default), 
 #'   no parallel computing is used to transport categorical data.
 #'  
@@ -54,7 +59,10 @@ ot_simplex_probs <- function(pred_probs_0,
                              weights_0,
                              weights_1,
                              num_neighbors_q = NULL,
+                             method = c("shortsimplex", "sinkhorn", "OSQP"),
                              cl = NULL) {
+  
+  method <- match.arg(method)
   
   if (is.null(num_neighbors_q)) {
     num_neighbors_q <- min(nrow(pred_probs_0), nrow(pred_probs_1), 50)
@@ -73,7 +81,7 @@ ot_simplex_probs <- function(pred_probs_0,
       cl, varlist = c(
         "pred_probs_0", "pred_probs_1", 
         "weights_0", "weights_1", 
-        "num_neighbors_q", "compute_counterfactual_probs"
+        "num_neighbors_q", "method", "compute_counterfactual_probs"
       ),
       envir = environment()
     )
@@ -85,16 +93,19 @@ ot_simplex_probs <- function(pred_probs_0,
       weights_0 = weights_0,
       weights_1 = weights_1,
       num_neighbors_q = num_neighbors_q,
+      method = method,
       cl = cl
     )
   } else {
     res <- pbapply::pblapply(
-      indices, compute_counterfactual_probs,
+      indices, 
+      compute_counterfactual_probs,
       pred_probs_0 = pred_probs_0,
       pred_probs_1 = pred_probs_1,
       weights_0 = weights_0,
       weights_1 = weights_1,
-      num_neighbors_q = num_neighbors_q
+      num_neighbors_q = num_neighbors_q,
+      method = method
     )
     
   }
@@ -173,6 +184,7 @@ get_assignment <- function(probs,
 #'        estimation. Default to 5.
 #' @param num_neighbors_q Number of neigbors to use for categorical variables.
 #'  Default to the min between 50 and the number of observations in the data.
+#' @param method Either `"shortsimplex"`, `"sinkhorn"`, or `"OSQP"`.
 #' @param silent If `TRUE`, the messages showing progress in the estimation are
 #'        not shown. Default to `silent=FALSE`.
 #' @param cl A cluster object, created by package parallel. If `NULL` (default), 
@@ -238,8 +250,12 @@ seq_trans <- function(data,
                       y,
                       num_neighbors = 5,
                       num_neighbors_q = NULL,
+                      method = c("shortsimplex", "sinkhorn", "OSQP"),
                       silent = FALSE,
                       cl = NULL) {
+  
+  method <- match.arg(method)
+  
   # Make sure character variables are encoded as factors
   data <-
     data |>
@@ -415,6 +431,7 @@ seq_trans <- function(data,
             weights_0 = 1 / (weights_S0 + 1e-8)^2, 
             weights_1 = weights_S1, 
             num_neighbors_q = num_neighbors_q,
+            method = method,
             cl = cl
           )
           
@@ -524,7 +541,8 @@ seq_trans <- function(data,
           }
           
           mapping <- wasserstein_simplex(
-            X = pred_probs_0, Y = pred_probs_1
+            X = pred_probs_0, Y = pred_probs_1,
+            method = method
           )
           pred_probs_0_t <- counterfactual_w(
             mapping = mapping, X0 = pred_probs_0, X1 = pred_probs_1
@@ -579,6 +597,7 @@ seq_trans <- function(data,
 #'  observations in X and Y.
 #' @noRd
 compute_pdist_simplex_fast <- function(X, Y) {
+  
   p <- ncol(X)
   invX <- 1 / X
   
@@ -616,7 +635,6 @@ compute_pdist_simplex_fast <- function(X, Y) {
 #' @importFrom CVXR Variable Minimize matrix_trace Problem solve
 #' @importFrom lpSolve lp
 #'
-#' @noRd
 wass_lp <- function(dxy,
                     wx,
                     wy,
@@ -660,6 +678,7 @@ wass_lp <- function(dxy,
     gamma <- matrix(f.sol$solution, nrow = m)
     value <- (sum(gamma*cxy)^(1 / p))
   }
+  
   list(distance = value, plan = gamma)
 }
 
@@ -677,7 +696,11 @@ wass_lp <- function(dxy,
 #' @importFrom T4transport sinkhornD
 #'
 #' @noRd
-wass_lp_sinkhorn <- function(dxy, wx, wy, p = 2) {
+wass_lp_sinkhorn <- function(dxy, 
+                             wx, 
+                             wy, 
+                             p = 2) {
+  
   stopifnot(all(abs(sum(wx) - 1) < 1e-8), all(abs(sum(wy) - 1) < 1e-8))
   
   # Compute transport plan via Sinkhorn algorithm
@@ -700,7 +723,11 @@ wass_lp_sinkhorn <- function(dxy, wx, wy, p = 2) {
 #' @importFrom transport transport
 #'
 #' @noRd
-wass_lp_fast <- function(dxy, wx, wy, p = 2) {
+wass_lp_fast <- function(dxy, 
+                         wx, 
+                         wy, 
+                         p = 2) {
+  
   stopifnot(all(abs(sum(wx) - 1) < 1e-8), all(abs(sum(wy) - 1) < 1e-8))
   
   m <- length(wx)
@@ -736,6 +763,7 @@ wass_lp_fast <- function(dxy, wx, wy, p = 2) {
 #' @param fname Name of the distance used (string).
 #' @noRd
 valid_single_marginal <- function(mvec, M, fname) {
+  
   dname <- paste0("'", deparse(substitute(mvec)), "'")
   if ((length(mvec) == 0) && is.null(mvec)) {
     return(rep(1 / M, M))
@@ -745,7 +773,7 @@ valid_single_marginal <- function(mvec, M, fname) {
       stop(
         paste0(
           "* ", fname, " : ", dname,
-          " should be a nonnegative vector of length ",M,"."
+          " should be a nonnegative vector of length ", M, "."
         )
       )
     }
@@ -762,6 +790,7 @@ valid_single_marginal <- function(mvec, M, fname) {
 #' weights will be used).
 #' @param wy Weights (marginal distribution) for Y. Default to `NULL` (uniform
 #' weights will be used).
+#' @param method Either `"shortsimplex"`, `"sinkhorn"`, or `"OSQP"`.
 #'
 #' @returns A list with two elements:
 #' * `distance`: the Wassterstein distance
@@ -771,8 +800,13 @@ valid_single_marginal <- function(mvec, M, fname) {
 wasserstein_simplex <- function(X,
                                 Y,
                                 wx = NULL,
-                                wy = NULL) {
-  ## CHECK INPUTS
+                                wy = NULL,
+                                method = c("shortsimplex", "sinkhorn", "OSQP")) {
+  
+  
+  method <- match.arg(method)
+  
+  ## Check Inputs
   if (is.vector(X)) {
     X <- matrix(X, ncol = 1)
   }
@@ -789,8 +823,8 @@ wasserstein_simplex <- function(X,
   m <- base::nrow(X)
   n <- base::nrow(Y)
   
-  wxname <-  paste0("'",deparse(substitute(wx)),"'")
-  wyname <- paste0("'",deparse(substitute(wy)),"'")
+  wxname <-  paste0("'", deparse(substitute(wx)), "'")
+  wyname <- paste0("'", deparse(substitute(wy)), "'")
   fname  <- "wasserstein"
   
   # Weight normalization
@@ -801,5 +835,76 @@ wasserstein_simplex <- function(X,
   dist_mat  <- compute_pdist_simplex_fast(X, Y)
   
   # Solve the optimal transport problem
-  wass_lp_fast(dxy = dist_mat, wx = par_wx, wy = par_wy, p = 2)
+  if (method == "shortsimplex") {
+    return(wass_lp_fast(dxy = dist_mat, wx = par_wx, wy = par_wy, p = 2))
+  } else if (method == "OSQP") {
+    return(wass_lp(dxy = dist_mat, wx = par_wx, wy = par_wy, p = 2))
+  } else {
+    return(wass_lp_sinkhorn(dxy = dist_mat, wx = par_wx, wy = par_wy, p = 2))
+  }
+  
+}
+
+#' Estimation of total causal effect using counterfactuals.
+#' 
+#' @param data_untreated Dataset with the untreated units only.
+#' @param data_treated Dataset with the treated units only.
+#' @param data_cf Counterfactuals (untreated had they been treated).
+#' @param Y_name Name of the column with the outcome variable.
+#' @param A_name Name of the column with the treatment variable.
+#' @param A_untreated Value of the treatment for the untreated units.
+#' 
+#' @returns A list:
+#' - `delta_0_i`: \eqn{\delta_(0)}, individual causal mediation effects for \eqn{a=0},
+#' - `delta_0`: \eqn{\bar{\delta}(0)}, average causal mediation effect for \eqn{a=0},
+#' - `zeta_1_i`: \eqn{\zeta_(1)}, individual causal mediation effects for \eqn{a=1},
+#' - `zeta_1`: \eqn{\bar{\zeta}(1)}, average causal mediation effect for \eqn{a=1},
+#' - `tot_effect`: \eqb{\tau}: average total effect (\eqn{\bar{\delta}(0) + \bar{\zeta}(1)}).
+#'
+#' @importFrom randomForest randomForest
+#' @importFrom dplyr pull select
+#' @importFrom stats predict
+#' @md
+causal_effects_cf <- function(data_untreated,
+                              data_treated,
+                              data_cf,
+                              Y_name,
+                              A_name,
+                              A_untreated) {
+  
+  n_untreated <- nrow(data_untreated)
+  n_treated <- nrow(data_treated)
+  
+  # Outcome model for untreated
+  mu_untreated_model <- randomForest(
+    x = data_untreated |> dplyr::select(-!!Y_name, -!!A_name),
+    y = pull(data_untreated, !!Y_name)
+  )
+  
+  # Outcome model for treated
+  mu_treated_model <- randomForest(
+    x = data_treated |> dplyr::select(-!!Y_name, -!!A_name),
+    y = pull(data_treated, !!Y_name)
+  )
+  
+  # Observed outcome for untreated
+  Y_untreated_obs <- data_untreated |> pull(!!Y_name)
+  
+  # Natural Indirect Effect
+  delta_0_i <- predict(mu_untreated_model, newdata = data_cf) - Y_untreated_obs
+  delta_0 <- mean(delta_0_i)
+  # Natural Direct Effect
+  zeta_1_i <- predict(mu_treated_model, newdata = data_cf) - 
+    predict(mu_untreated_model, newdata = data_cf)
+  zeta_1 <- mean(zeta_1_i)
+  # Total Causal Effect for treated
+  tot_effect <- delta_0 + zeta_1
+  
+  list(
+    delta_0_i = delta_0_i,
+    delta_0 = delta_0,
+    zeta_1_i = zeta_1_i,
+    zeta_1 = zeta_1,
+    tot_effect = tot_effect
+  )
 }
