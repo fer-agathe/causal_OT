@@ -41,6 +41,13 @@ $$
 \definecolor{colGpe1}{RGB}{127, 23, 14}
 \definecolor{colGpe0}{RGB}{27, 149, 224}
 $$
+We load some useful functions to export graphs (see [Chatper -@sec-utils]).
+
+```{r source-files}
+#| message: false
+#| warning: false
+source("../scripts/utils.R")
+```
 
 
 ```{r}
@@ -58,73 +65,6 @@ colrm <- "#9986A5"
 
 export_tikz <- FALSE
 
-plot_to_pdf <- function(filename,
-                        path_to_latex = "/Library/TeX/texbin/",
-                        interpreter = "pdflatex",
-                        path = "./",
-                        keep_tex = FALSE,
-                        verbose = FALSE,
-                        ignore.stdout = TRUE,
-                        crop = FALSE) {
-  content <- paste0(
-    "\\documentclass{standalone}
-      \\usepackage{amsmath,amssymb,amsthm,mathtools,graphicx}
-      \\usepackage{array,dcolumn}
-      %\\usepackage{dsfont}
-      %\\usepackage{fontspec}
-      \\renewcommand{\\rmdefault}{ptm}
-      \\renewcommand{\\sfdefault}{phv}
-      %\\setmainfont{Noto Sans}
-      %
-      \\usepackage{nicefrac}
-      \\usepackage{times}
-      %\\usepackage{natbib}
-      \\usepackage{microtype}
-      %\\usepackage{newtxtext,newtxmath}
-      %\\usepackage{times,mathpazo}
-      \\usepackage{pgfplots}
-      \\usetikzlibrary{pgfplots.groupplots}
-      \\usepackage{xcolor}
-      \\begin{document}
-
-      \\input{",
-    path, filename,
-    ".tex}
-
-      \\end{document}"
-  )
-  
-  # The file which will import the graph in tex format
-  fileConn <- file(paste0(path, filename, "_tmp.tex"))
-  writeLines(content, fileConn)
-  close(fileConn)
-  
-  # Process tex file to get the PDF
-  system(
-    paste0(
-      path_to_latex,
-      interpreter, " -shell-escape -synctex=1 -interaction=nonstopmode  ",
-      path,
-      filename, "_tmp.tex"),
-    ignore.stdout = TRUE
-  )
-  if (crop == TRUE) {
-    system(
-      paste0(
-        "pdfcrop ", filename, "_tmp.pdf ", filename, "_tmp.pdf"
-      )
-    )
-  }
-  if(!path %in%  c(".", "./", "/")) 
-    system(paste0("mv ", filename, "_tmp.pdf ", path))
-  system(paste0("rm ", filename, "_tmp.aux"))
-  system(paste0("rm ", filename, "_tmp.log"))
-  system(paste0("rm ", filename, "_tmp.synctex.gz"))
-  if (!keep_tex) {
-    system(paste0("rm ", path, filename, "_tmp.tex"))
-  }
-  system(paste0("mv ", path, filename, "_tmp.pdf ", path, filename, ".pdf"))
-}
 
 
 # Generate data
@@ -145,10 +85,12 @@ y1 <- fm1(x1) + rnorm(n) / 2
 
 # First plot----
 
+cex_pts <- .4
+height_fig_tkz <- width_fig_tkz <- 2.67
 
 if (export_tikz == TRUE) {
   par(mar = c(2.1, 0, 0, 0))
-  tikz('figs/gaussian-1-mean.tex', width = 3, height = 3)
+  tikz('figs/gaussian-1-mean.tex', width = width_fig_tkz, height = height_fig_tkz)
 } else {
   par(mar = c(2.1, 0, 0, 0), mfrow = c(1, 2))
 }
@@ -207,12 +149,12 @@ if (1 == 0) {
 abline(v = c(mx0, mx1), lty = 2, lwd = .7)
 
 # Observed points in group 0
-points(x0, y0, pch = 19, cex = .6, col = colrj[1])
+points(x0, y0, pch = 19, cex = cex_pts, col = colrj[1])
 # True conditional mean in grouo 0
 segments(-3, fm0(-3), 3, fm0(3), col = COLRJ[1], lwd = 2)
 
 # Observed points in group 1
-points(x1, y1, pch = 19, cex = .6, col = colrj[2])
+points(x1, y1, pch = 19, cex = cex_pts, col = colrj[2])
 # True conditional mean in grouo 0
 segments(-3, fm1(-3), 3, fm1(3), col = COLRJ[2], lwd = 2)
 
@@ -298,7 +240,7 @@ if (export_tikz == TRUE) dev.off()
 # Second plot----
 
 if (export_tikz == TRUE) {
-  tikz('figs/gaussian-1-transp.tex', width = 3, height = 3)
+  tikz('figs/gaussian-1-transp.tex', width = width_fig_tkz, height = height_fig_tkz)
 }
 
 # With the counterfactual
@@ -327,9 +269,9 @@ lines(x, dx1 * 4, col = COLRJ[2], lwd = 2)
 axis(1, at = -3:3, labels = FALSE)
 if (export_tikz == FALSE) {
   lab_x <- expression(
-      x[i], # \bar{x}_0
-      x[i](1) # \bar{x}_1
-    )
+    x[i], # \bar{x}_0
+    x[i](1) # \bar{x}_1
+  )
   lab_line_0 <- expression(y == alpha[0] + beta[0] * x)
   lab_line_1 <- expression(y == alpha[1] + beta[1] * x)
 } else {
@@ -369,12 +311,12 @@ if (1== 0) {
 abline(v = c(t0, t1), lty = 2, lwd = .7)
 
 # Observed points in group 0
-points(x0, y0, pch = 19, cex = .6, col = colrj[1])
+points(x0, y0, pch = 19, cex = cex_pts, col = colrj[1])
 # True conditional mean in grouo 0
 segments(-3, fm0(-3), 3, fm0(3), col = COLRJ[1], lwd = 2)
 
 # Observed points in group 1
-points(x1, y1, pch = 19, cex = .6, col = colrj[2])
+points(x1, y1, pch = 19, cex = cex_pts, col = colrj[2])
 # True conditional mean in grouo 0
 segments(-3, fm1(-3), 3, fm1(3), col = COLRJ[2], lwd = 2)
 # This time, instead of means: transported values

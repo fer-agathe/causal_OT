@@ -1,4 +1,4 @@
-% Created by tikzDevice version 0.12.6 on 2025-07-18 18:23:20
+% Created by tikzDevice version 0.12.6 on 2025-07-21 14:27:24
 % !TEX encoding = UTF-8 Unicode
 \begin{tikzpicture}[x=1pt,y=1pt]
 \definecolor{fillColor}{RGB}{255,255,255}
@@ -1086,7 +1086,14 @@
 	(144.09, 70.92) --
 	(137.34, 70.92) --
 	cycle;
-\definecolor{fillColor}{RGB}{0,158,115}
+\definecolor{fillColor}{RGB}{0,0,0}
+
+\path[fill=fillColor] (125.30, 59.49) --
+	(132.05, 59.49) --
+	(132.05, 66.24) --
+	(125.30, 66.24) --
+	cycle;
+\definecolor{fillColor}{RGB}{0,114,178}
 
 \path[fill=fillColor] (123.90, 50.59) --
 	(130.65, 50.59) --
@@ -1107,10 +1114,17 @@
 \path[draw=drawColor,line width= 0.8pt,dash pattern=on 4pt off 4pt ,line join=round,line cap=round] (134.59, 63.70) --
 	(140.71, 67.55) --
 	(134.32, 70.93);
-\definecolor{fillColor}{RGB}{0,158,115}
+\definecolor{drawColor}{RGB}{0,0,0}
+
+\path[draw=drawColor,line width= 0.8pt,dash pattern=on 4pt off 4pt ,line join=round,line cap=round] ( 99.93, 66.05) -- (128.68, 62.86);
+
+\path[draw=drawColor,line width= 0.8pt,dash pattern=on 4pt off 4pt ,line join=round,line cap=round] (122.06, 59.96) --
+	(128.68, 62.86) --
+	(122.85, 67.14);
+\definecolor{fillColor}{RGB}{0,114,178}
 
 \path[fill=fillColor,fill opacity=0.50] (127.27, 66.05) circle (  3.38);
-\definecolor{drawColor}{RGB}{0,158,115}
+\definecolor{drawColor}{RGB}{0,114,178}
 
 \path[draw=drawColor,line width= 0.8pt,line join=round,line cap=round] ( 99.93, 66.05) -- (127.27, 66.05);
 
@@ -1153,19 +1167,26 @@
 	( 37.57,116.77) --
 	( 30.82,116.77) --
 	cycle;
-\definecolor{fillColor}{RGB}{0,158,115}
+\definecolor{fillColor}{RGB}{0,0,0}
 
 \path[fill=fillColor] ( 30.82, 98.02) --
 	( 37.57, 98.02) --
 	( 37.57,104.77) --
 	( 30.82,104.77) --
 	cycle;
-\definecolor{fillColor}{RGB}{213,94,0}
+\definecolor{fillColor}{RGB}{0,114,178}
 
 \path[fill=fillColor] ( 30.82, 86.02) --
 	( 37.57, 86.02) --
 	( 37.57, 92.77) --
 	( 30.82, 92.77) --
+	cycle;
+\definecolor{fillColor}{RGB}{213,94,0}
+
+\path[fill=fillColor] ( 30.82, 74.02) --
+	( 37.57, 74.02) --
+	( 37.57, 80.77) --
+	( 30.82, 80.77) --
 	cycle;
 \definecolor{drawColor}{RGB}{0,0,0}
 
@@ -1173,8 +1194,10 @@
 
 \node[text=drawColor,anchor=base west,inner sep=0pt, outer sep=0pt, scale=  1.00] at ( 43.20,109.95) {OT};
 
-\node[text=drawColor,anchor=base west,inner sep=0pt, outer sep=0pt, scale=  1.00] at ( 43.20, 97.95) {Seq. OT (1)};
+\node[text=drawColor,anchor=base west,inner sep=0pt, outer sep=0pt, scale=  1.00] at ( 43.20, 97.95) {Sinkhorn};
 
-\node[text=drawColor,anchor=base west,inner sep=0pt, outer sep=0pt, scale=  1.00] at ( 43.20, 85.95) {Seq. OT (2)};
+\node[text=drawColor,anchor=base west,inner sep=0pt, outer sep=0pt, scale=  1.00] at ( 43.20, 85.95) {Seq. OT (1)};
+
+\node[text=drawColor,anchor=base west,inner sep=0pt, outer sep=0pt, scale=  1.00] at ( 43.20, 73.95) {Seq. OT (2)};
 \end{scope}
 \end{tikzpicture}

@@ -32,9 +32,9 @@ $$
 \definecolor{wongBlue}{RGB}{0, 114, 178}
 \definecolor{wongOrange}{RGB}{213, 94, 0}
 \definecolor{wongPurple}{RGB}{204, 121, 167}
-\definecolor{colA}{RGB}{255, 221, 85}
-\definecolor{colB}{RGB}{148, 78, 223}
-\definecolor{colC}{RGB}{63, 179, 178}
+\definecolor{colA}{RGB}{0, 114, 178}
+\definecolor{colB}{RGB}{213, 94, 0}
+\definecolor{colC}{RGB}{204, 121, 167}
 \definecolor{colGpeZero}{RGB}{127, 23, 14}
 \definecolor{colGpeUn}{RGB}{27, 149, 224}
 $$
@@ -46,6 +46,7 @@ library(extrafont, quietly = TRUE)
 font_family <- "CMU Serif"
 colours <- c("#3fb3b2", "#ffdd55","#1b95e0", "#0072B2")
 
+source("../scripts/utils.R")
 
 path <- "./figs/"
 if (!dir.exists(path)) dir.create(path)
@@ -111,7 +112,7 @@ We define a wraper function, `transp_ot()`{.R} for the previous codes, to transp
 
 ```{r define-transp_ot}
 #| code-fold: true
-#| code-summary: The `transp_ot`(){.R} function.
+#| code-summary: The `transp_ot()`{.R} function.
 transp_ot <- function(x0) {
   # First, transport X_1 from group 0 to group 1
   T1x0 <- qnorm(
@@ -347,37 +348,50 @@ We can visualize the results. In @fig-gauss-weights we can visualize $x_{2|1,0}^
 #| warnning: false
 #| fig-height: 4.6
 #| fig-width: 4.6
+export_tikz <- FALSE
+library(tikzDevice)
 library(mgcv)
-f_plot <- function(res_sim, kernel, x0, ylim = NULL) {
+f_plot <- function(res_sim, 
+                   kernel, 
+                   x0, 
+                   ylim = NULL, 
+                   tikz = FALSE, 
+                   draw_y_axis = TRUE) {
   plot(
     res_sim[, 1], res_sim[, 2],
     # V[1,], V[2,],
-    cex = .5, col = scales::alpha(colours[3], .2),
+    cex = .4, col = scales::alpha(colours[3], .2),
     xlab = "",
     ylab = "",
     main = "",
     ylim = ylim,
-    family = font_family
+    family = font_family,
+    axes = FALSE
   )
+  axis(1, family = font_family)
+  if (draw_y_axis) axis(2, family = font_family)
   title(
     main = paste(kernel, "kernel"),
     family = font_family,
     adj = 0,
-    line = 2
+    line = 2,
+    cex.main = 1
   )
+  sub_title <- paste0(
+    "$(x_{1,0}, x_{2,0}) = (",
+    paste(x0, collapse = ", "), ")$"
+  )
+  
+  if (tikz == FALSE) sub_title <- latex2exp::TeX(sub_title)
   title(
-    main =  latex2exp::TeX(
-      paste(
-        "$(x_{1,0}, x_{2,0}) = (", 
-        paste(x0, collapse = ", "), ")$"
-      )
-    ),
+    main =  sub_title,
     family = font_family,
     adj = 0,
-    line = 1
+    line = 1,
+    cex.main = 1,
   )
   title(
-    xlab = "Size of neighborhood (bandwidth)", 
+    xlab = "Neighborhood size", 
     ylab = "Transported value", 
     line = 2,
     family = font_family
@@ -394,17 +408,39 @@ f_plot <- function(res_sim, kernel, x0, ylim = NULL) {
   lines(nbase$x, p$fit, col = colours[4], lwd = 3)
 }
 
-par(mfrow = c(2,2), mar = c(3.1, 3.1, 3.1, 2.1))
-f_plot(res_sim_gaussian_1, kernel = "Gaussian", x0 = c(0, 0), ylim = c(1.4, 1.8))
-f_plot(res_sim_uniform_1, kernel = "Uniform", x0 = c(0, 0), ylim = c(1.4, 1.8))
-f_plot(res_sim_gaussian_2, kernel = "Gaussian", x0 = c(-2, -1), ylim = c(2, 2.5))
-f_plot(res_sim_uniform_2, kernel = "Uniform", x0 = c(-2, -1), ylim = c(2, 2.5))
-
 path <- "./figs/"
-p <- recordPlot()
-pdf(paste0(path, "gaussian-ot-local-weights.pdf"), 
-    width = 4.6, height = 4.6)
-replayPlot(p)
-dev.off()
+file_name <- "gaussian-ot-local-weights"
+
+if (export_tikz == TRUE)
+  tikz(paste0("figs/", file_name, ".tex"), width = 2.75, height = 2.75)
+
+layout(matrix(1:4, ncol = 2, byrow = TRUE), width = c(1, .8))
+par(mar = c(3.1, 3.1, 3.1, .1))
+f_plot(
+  res_sim_gaussian_1, 
+  kernel = "Gaussian", x0 = c(0, 0), ylim = c(1.4, 1.8), tikz = export_tikz
+)
+par(mar = c(3.1, .6, 3.1, .1))
+f_plot(
+  res_sim_uniform_1, 
+  kernel = "Uniform", x0 = c(0, 0), ylim = c(1.4, 1.8), tikz = export_tikz,
+  draw_y_axis = FALSE
+)
+par(mar = c(3.1, 3.1, 3.1, .1))
+f_plot(
+  res_sim_gaussian_2, 
+  kernel = "Gaussian", x0 = c(-2, -1), ylim = c(2, 2.5), tikz = export_tikz
+)
+par(mar = c(3.1, .6, 3.1, .1))
+f_plot(
+  res_sim_uniform_2, 
+  kernel = "Uniform", x0 = c(-2, -1), ylim = c(2, 2.5), tikz = export_tikz,
+  draw_y_axis = FALSE
+)
+
+if (export_tikz == TRUE) {
+  dev.off()
+  plot_to_pdf(filename = file_name, path = path, keep_tex = FALSE, crop = FALSE)
+}
 ```
 

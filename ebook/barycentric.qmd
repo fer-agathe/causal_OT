@@ -38,9 +38,7 @@ $$
 \definecolor{wongBlue}{RGB}{0, 114, 178}
 \definecolor{wongOrange}{RGB}{213, 94, 0}
 \definecolor{wongPurple}{RGB}{204, 121, 167}
-\definecolor{colA}{RGB}{255, 221, 85}
-\definecolor{colB}{RGB}{148, 78, 223}
-\definecolor{colC}{RGB}{63, 179, 178}
+
 \definecolor{colGpeZero}{RGB}{127, 23, 14}
 \definecolor{colGpeUn}{RGB}{27, 149, 224}
 $$
@@ -50,7 +48,8 @@ $$
 #| code-summary: Codes for graphical parameters.
 library(extrafont)
 loadfonts(device = "pdf", quiet = TRUE)
-col_categ <- c("A" = "#ffdd55", "B" = "#944edf", "C" = "#3fb3b2")
+# col_categ <- c("A" = "#ffdd55", "B" = "#944edf", "C" = "#3fb3b2")
+col_categ <- c("#56B4E9", "#D55E00", "#CC79A7")
 font_size <- 20
 font_family <- "CMU Serif"
 
@@ -144,8 +143,9 @@ Each region $R_i$ corresponds to the set of points $\boldsymbol{x}\in\mathcal{S}
 
 ```{r}
 #| code-fold: true
-#| code-summary: Barycentric centroid of balance, when $\mathcal{D}(\boldsymbol{\alpha})$ with $\boldsymbol{\alpha}=(2, 5, 3)$ and when $\boldsymbol{p}=(3 ,2,1)/6$.
-#| fig-cap: simplex-baryc-centr-bal-example
+#| code-summary: Codes to create the Figure.
+#| fig-cap: Barycentric centroid of balance, when $\mathcal{D}(\boldsymbol{\alpha})$ with $\boldsymbol{\alpha}=(2, 5, 3)$ and when $\boldsymbol{p}=(3 ,2,1)/6$.
+#| label: simplex-baryc-centr-bal-example
 ggtern(
   data = samples_dirichlet_p,
   mapping = aes(x = A, y = B, z = C, color = category)

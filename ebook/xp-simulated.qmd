@@ -517,12 +517,12 @@ We load previously run simulations:
 load("../output/res_simul.rda")
 ```
 
-We can have a look at the `r colorize("transported values", colours[["B"]])` for variable $X_3$ (from `r colorize("group 0", colours[["0"]])` to `r colorize("group 1", colours[["1"]])`) of the first run, on a ternary plot (@fig-ternary-simul-1).
+We can have a look at the `r colorize("transported values", colours[["transp"]])` for variable $X_3$ (from `r colorize("group 0", colours[["0"]])` to `r colorize("group 1", colours[["1"]])`) of the first run, on a ternary plot (@fig-ternary-simul-1).
 
 ```{r}
 #| code-fold: true
 #| code-summary: Codes to create the Figure.
-#| fig-cap: !expr glue::glue("$X_3$ values for individuals from <span style='color:{c0};'>group 0</span>, those from <span style='color:{c1};'>group 1</span>, and those <span style='color:{c2};'>transported</span> from group 0 to group 1 using sequential transport.", c0 = colours[["0"]], c1 = colours[["1"]], c2 = colours[["B"]])
+#| fig-cap: !expr glue::glue("$X_3$ values for individuals from <span style='color:{c0};'>group 0</span>, those from <span style='color:{c1};'>group 1</span>, and those <span style='color:{c2};'>transported</span> from group 0 to group 1 using sequential transport.", c0 = colours[["0"]], c1 = colours[["1"]], c2 = colours[["transp"]])
 #| label: fig-ternary-simul-1
 #| warning: false
 #| message: false
@@ -544,7 +544,7 @@ ggtern(
   ) +
   labs(x = "A", y = "B", z = "C") +
   scale_colour_manual(
-    values = c("0" = colours[["0"]], "1" = colours[["1"]], "1 to 0" = colours[["B"]])
+    values = c("0" = colours[["0"]], "1" = colours[["1"]], "1 to 0" = colours[["transp"]])
   ) +
   theme_light(base_size = font_size, base_family = font_family) +
   theme_ggtern_paper() +

@@ -5,9 +5,10 @@ colours <- c(
   # `1` = "#7F170E",
   `0` = "#00A08A", 
   `1` = "#F2AD00", 
+  `transp` = "#1b95e0",
   with = "#046C9A", 
-  without = "#C93312", 
-  `2` = "#0B775E"
+  without = "#C93312"
+  # `2` = "#0B775E"
 )
 # Colour scale from colour of class 0 to class 1
 colfunc <- colorRampPalette(c(colours["0"], colours["1"]))

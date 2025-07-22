@@ -34,9 +34,9 @@ $$
 \definecolor{wongBlue}{RGB}{0, 114, 178}
 \definecolor{wongOrange}{RGB}{213, 94, 0}
 \definecolor{wongPurple}{RGB}{204, 121, 167}
-\definecolor{colA}{RGB}{255, 221, 85}
-\definecolor{colB}{RGB}{148, 78, 223}
-\definecolor{colC}{RGB}{63, 179, 178}
+\definecolor{colA}{RGB}{0, 114, 178}
+\definecolor{colB}{RGB}{213, 94, 0}
+\definecolor{colC}{RGB}{204, 121, 167}
 \definecolor{colGpeZero}{RGB}{127, 23, 14}
 \definecolor{colGpeUn}{RGB}{27, 149, 224}
 $$
@@ -46,7 +46,8 @@ $$
 #| code-summary: Codes for graphical parameters.
 library(extrafont, quietly = TRUE)
 loadfonts(device = "pdf", quiet = TRUE)
-col_categ <- c("A" = "#ffdd55", "B" = "#944edf", "C" = "#3fb3b2")
+# col_categ <- c("A" = "#ffdd55", "B" = "#944edf", "C" = "#3fb3b2")
+col_categ <- c("A" = "#56B4E9", "B" = "#D55E00", "C" = "#CC79A7")
 font_size <- 20
 font_family <- "CMU Serif"
 
@@ -153,6 +154,7 @@ tb_att_1 <-
   select(i_0, i_1, diff, x_0, x_1)
 tb_att_1
 ```
+
 The average treatment on the treated is thus, in that case:
 ```{r show-att-example1}
 mean(tb_att_1$diff)
