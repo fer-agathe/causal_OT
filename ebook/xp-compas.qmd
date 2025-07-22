@@ -295,6 +295,54 @@ tb_ot_transported <- tb_ot_transported |>
 tb_ot_transported <- as.list(tb_ot_transported)
 ```
 
+### Penalized Optimal Transport
+
+We can directly compute the transport map using Sinkhorn penalty.
+```{r}
+# Compute transport plan
+sinkhorn_transport_res <- T4transport::sinkhornD(
+  combined_cost, wx = w0, wy = w1, lambda = 0.1
+  )
+
+sinkhorn_transport_plan <- sinkhorn_transport_res$plan
+```
+
+We first transport the numerical variables.
+```{r}
+num_sinkhorn_transported <- n0 * (sinkhorn_transport_plan %*% as.matrix(X1_num))
+```
+
+Then, we transport the categorical variables with label reconstruction (not perfect here).
+```{r}
+cat_sinkhorn_transported <- list()
+for (col in cat_cols) {
+  cat_probs <- sinkhorn_transport_plan %*% as.matrix(X1_cat_encoded[[col]])
+  cat_encoded_columns <- colnames(X1_cat_encoded[[col]])
+  # For each obs., we take the index with the maximum value (approx. proba)
+  max_indices <- apply(cat_probs, 1, which.max)
+  prefix_pattern <- paste0("^", col, "\\.")
+  cat_sinkhorn_transported[[col]] <- sapply(max_indices, function(x) sub(prefix_pattern, "", cat_encoded_columns[x]))
+}
+```
+
+We can now store the results into a tibble.
+```{r}
+tb_sinkhorn_transported <- as_tibble(num_sinkhorn_transported)
+for (col in cat_cols) {
+  tb_sinkhorn_transported[[col]] <- cat_sinkhorn_transported[[col]]
+}
+
+save(tb_sinkhorn_transported, file = "../output/sinkhorn-compas.rda")
+```
+
+```{r}
+# Load tb_sinkhorn_transported
+load("../output/sinkhorn-compas.rda")
+tb_sinkhorn_transported <- tb_sinkhorn_transported |>
+  mutate(c_charge_degree = as.factor(c_charge_degree))
+tb_sinkhorn_transported <- as.list(tb_sinkhorn_transported)
+```
+
 ### Sequential Transport
 
 We call the  `seq_trans()`{.R} function (see [Chapter -@sec-functions]) function to build the counterfactuals of Black individuals. The estimations are done using parallel computation.
@@ -436,6 +484,28 @@ causal_effects_ot <- causal_effects_cf(
   data_untreated = tb_untreated, 
   data_treated = tb_treated,
   data_cf = as_tibble(tb_ot_transported), 
+  Y_name = Y_name, 
+  A_name = A_name, 
+  A_untreated = A_untreated # 0
+)
+
+cbind(
+  delta_0 = causal_effects_ot$delta_0,
+  zeta_1 = causal_effects_ot$zeta_1, 
+  tot_effect = causal_effects_ot$tot_effect
+)
+```
+
+### With Penalized Optimal Transport
+
+```{r}
+#| warning: false
+#| message: false
+
+causal_effects_ot <- causal_effects_cf(
+  data_untreated = tb_untreated, 
+  data_treated = tb_treated,
+  data_cf = as_tibble(tb_sinkhorn_transported), 
   Y_name = Y_name, 
   A_name = A_name, 
   A_untreated = A_untreated # 0
