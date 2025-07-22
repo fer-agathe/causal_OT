@@ -26,7 +26,11 @@ library(mnormt)
 #| code-summary: Codes for graphical parameters
 library(extrafont, quietly = TRUE)
 col_group <- c("#00A08A","#F2AD00", "#1b95e0")
-colour_methods <- c("OT" = "#CC79A7", "seq_1" = "#0072B2", "seq_2" = "#D55E00")
+colour_methods <- c(
+    "OT" = "#CC79A7", "OT-M" = "#009E73",
+    "skh" = "darkgray",
+    "seq_1" = "#0072B2", "seq_2" = "#D55E00"
+  )
 colGpe1 <- col_group[2]
 colGpe0 <- col_group[1]
 colGpet <- col_group[3]
@@ -305,9 +309,10 @@ gen_data <- function(n = 500,
 Let us build counterfactuals for individuals from `r colorize("group 0", colGpe0)`, and for individuals from `r colorize("group 1", colGpe1)`. We will consider the following methods:
 
 - Multivariate Optimal Transport (since we know the parameters of the two Gaussians),
+- Regularized transport using Sinkhorn algorithm,
 - Sequential Optimal Transport.
 
-### Optimal Transport
+### Optimal Transport {#sec-cf-ot}
 
 ```{r lobrary-expm}
 #| message: false
@@ -315,7 +320,21 @@ Let us build counterfactuals for individuals from `r colorize("group 0", colGpe0
 library(expm)
 ```
 
-The optimal transport map $T(x)$ from $\mathcal{N}(\boldsymbol{\mu}_0, \boldsymbol{\Sigma}_0)$ to
+Given two collection of points $\{\boldsymbol{x}_{0,1},\cdots,\boldsymbol{x}_{0,n_0}\}$ and $\{\boldsymbol{x}_{1,1},\cdots,\boldsymbol{x}_{1,n_1}\}$ in $\mathcal{X}_0$ and $\mathcal{X}_1$, and a cost $c:\mathcal{X}_0\times\mathcal{X}_1\to\mathbb{R}_+$, define the cost matrix, $n_0\times n_1$, $\boldsymbol{C}:=[C_{i,j}]$ where $C_{i,j}=c(\boldsymbol{x}_{0,i},\boldsymbol{x}_{1,j})$. The optimal matching problem is
+\[
+\min_{\boldsymbol{P}\in\mathcal{U}(\boldsymbol{1}_{n_0},\boldsymbol{1}_{n_1})}
+\langle \boldsymbol{P},\,\boldsymbol{C}\rangle,\text{ where }\langle \boldsymbol{P},\,\boldsymbol{C}\rangle
+=\sum_{i=1}^{n_0}\sum_{j=1}^{n_1}P_{ij}\,C_{ij},
+\]
+where $\mathcal{U}(\boldsymbol{1}_{n_0},\boldsymbol{1}_{n_1})$ is the polytope
+\[
+\left\{\,P\in\mathbb{R}_+^{n_0\times n_1}:
+P\,\mathbf{1}_{n_1}=\frac{\mathbf{1}_{n_0}}{n_0},\ 
+P^\top\mathbf{1}_{n_0}=\frac{\mathbf{1}_{n_1}}{n_1}
+\right\}.
+\]
+
+Here, in the Gaussian case, the optimal transport map $T(x)$ from $\mathcal{N}(\boldsymbol{\mu}_0, \boldsymbol{\Sigma}_0)$ to
 $\mathcal{N}(\boldsymbol{\mu}_1, \boldsymbol{\Sigma}_1)$ is:
 $$T(x) = \boldsymbol{\mu}_1 + \boldsymbol{A}(x - \boldsymbol{\mu}_0)$$
 where:
@@ -431,7 +450,7 @@ The initial points and the `r colorize("transported values", colGpet)` are shown
 ```{r}
 #| code-fold: true
 #| code-summary: Codes to create the Figure.
-#| fig-cap: !expr glue::glue("500 points in each group drawn from bivariates Gaussian distributions and <span style='color:{c2};'>transported values</span> from <span style='color:{c0};'>group 0</span> to <span style='color:{c1};'>group 1</span> (left), and from <span style='color:{c1};'>group 1</span> to <span style='color:{c0};'>group 0</span> (righr), using optimal transport.", c0 = colGpe0, c1 = colGpe1, c2 = colGpet)
+#| fig-cap: !expr glue::glue("500 points in each group drawn from bivariates Gaussian distributions and <span style='color:{c2};'>transported values</span> from <span style='color:{c0};'>group 0</span> to <span style='color:{c1};'>group 1</span> (left), and from <span style='color:{c1};'>group 1</span> to <span style='color:{c0};'>group 0</span> (right), using optimal transport.", c0 = colGpe0, c1 = colGpe1, c2 = colGpet)
 #| label: fig-gaussian-ot
 #| warning: false
 #| message: false
@@ -474,13 +493,14 @@ draw_ellipse(Mu1, Sig1, col = colGpe1, lty = 2)
 draw_ellipse(Mu1, Sigma0_transport, col = colGpet, lty = 2)
 
 # From 1 to 0
-plot(X0, 
-     pch = 16, 
-     col = adjustcolor(colGpe0, alpha = .3), 
-     xlim = x_lim, ylim = y_lim, 
-     xlab = "", ylab = "",
-     main = "OT: from A=0 to A=1",
-     family = font_family
+plot(
+  X0, 
+  pch = 16, 
+  col = adjustcolor(colGpe0, alpha = .3), 
+  xlim = x_lim, ylim = y_lim, 
+  xlab = "", ylab = "",
+  main = "OT: from A=1 to A=0",
+  family = font_family
 )
 title(xlab = "X1", ylab="X2", line=2, cex.lab=1.2, family = font_family)
 points(X1, col = adjustcolor(colGpe1, alpha = .3), pch = 16)
@@ -502,9 +522,511 @@ draw_ellipse(Mu1, Sig1, col = colGpe1, lty = 2)
 draw_ellipse(Mu0, Sigma0_transport, col = colGpet, lty = 2)
 ```
 
-### Sequential Transport
+### Transport-based Many-to-1 Matching {#sec-cf-tmatch}
 
-We will now transport individuals using sequential transport. The results are sensitive to the ordering within the sequence. We will thus consider both ordering here:
+
+Le us se optimal transport to perform transport-based optimal many-to-1 matching. We use optimal transport with a uniform source and target distribution. For each unit from the source group (group~0), we select the matched unit from the target group (group~1) as the one wit the maximum transported mass. This way, each unit in the source is matched to exactly one in the target.
+
+```{r define-transport_many_to_one}
+#| code-fold: true
+#| code-summary: The `transport_many_to_one()`{.R} function.
+#' @param X_source Source characteristics
+#' @param X_target Target characteristics
+#' @param method Algorithm to use for transport
+transport_many_to_one <- function(X_source, 
+                                  X_target, 
+                                  method = "shortsimplex") {
+  n_source <- nrow(X_source)
+  n_target <- nrow(X_target)
+  
+  # Uniform weights
+  w_source <- rep(1 / n_source, n_source)
+  w_target <- rep(1 / n_target, n_target)
+  
+  # Cost matrix
+  cost <- as.matrix(dist(rbind(X_source, X_target)))
+  cost <- cost[1:n_source, (n_source + 1):(n_source + n_target)]
+  
+  # Solve OT plan
+  ot_plan <- transport::transport(
+    w_source, w_target, costm = cost, method = method
+  )
+  
+  # For each source unit, select the target with the highest mass
+  best_match <- ot_plan |>
+    dplyr::group_by(from) |>
+    dplyr::slice_max(mass, n = 1, with_ties = FALSE) |>
+    dplyr::ungroup()
+  
+  # Matched matrix
+  X_matched <- X_target[best_match$to, , drop = FALSE]
+  
+  X_matched
+}
+```
+
+Let us apply the `transport_many_to_one()`{.R} function to get the counterfactuals in both group. 
+```{r define-X0_tmatch}
+X0 <- as.matrix(df[df$A == 0, c("X1", "X2")])
+X1 <- as.matrix(df[df$A == 1, c("X1", "X2")])
+X0_tmatch <- transport_many_to_one(X_source = X0, X_target = X1)
+X1_tmatch <- transport_many_to_one(X_source = X1, X_target = X0)
+```
+
+
+```{r}
+#| code-fold: true
+#| code-summary: Codes to create the Figure.
+#| fig-cap: !expr glue::glue("500 points in each group drawn from bivariates Gaussian distributions and <span style='color:{c2};'>transported values</span> from <span style='color:{c0};'>group 0</span> to <span style='color:{c1};'>group 1</span> (left), and from <span style='color:{c1};'>group 1</span> to <span style='color:{c0};'>group 0</span> (right), using transport-based many-to-one matching.", c0 = colGpe0, c1 = colGpe1, c2 = colGpet)
+#| label: fig-gaussian-tmatch
+#| warning: false
+#| message: false
+par(mar = c(2.1, 2.1, 2.1, 0.1), mfrow = c(1, 2))
+x_lim <- c(-4, 4)
+y_lim <- c(-4, 4)
+
+# From 0 to 1
+plot(
+  X0, 
+  pch = 16, 
+  col = adjustcolor(colGpe0, alpha = .3), 
+  xlim = x_lim, ylim = y_lim, 
+  xlab = "", ylab = "",
+  main = "Matching: from A=0 to A=1",
+  family = font_family
+)
+title(xlab = "X1", ylab="X2", line=2, cex.lab=1.2, family = font_family)
+points(X1, col = adjustcolor(colGpe1, alpha = .3), pch = 16)
+points(X0_tmatch, col = adjustcolor(colGpet, alpha = .3), pch = 17)
+
+# Add arrows from original to transported
+arrows(
+  x0 = X0[, "X1"], y0 = X0[, "X2"],
+  x1 = X0_tmatch[, 1], y1 = X0_tmatch[, 2],
+  length = 0.05, col = adjustcolor("gray", alpha = .3)
+)
+
+# Add ellipses
+draw_ellipse(Mu0, Sig0, col = colGpe0, lty = 2)
+draw_ellipse(Mu1, Sig1, col = colGpe1, lty = 2)
+
+
+# From 1 to 0
+plot(
+  X0, 
+  pch = 16, 
+  col = adjustcolor(colGpe0, alpha = .3), 
+  xlim = x_lim, ylim = y_lim, 
+  xlab = "", ylab = "",
+  main = "Matching: from A=1 to A=0",
+  family = font_family
+)
+title(xlab = "X1", ylab="X2", line=2, cex.lab=1.2, family = font_family)
+points(X1, col = adjustcolor(colGpe1, alpha = .3), pch = 16)
+points(X1_tmatch, col = adjustcolor(colGpet, alpha = .3), pch = 17)
+
+# Add arrows from original to transported
+arrows(
+  x0 = X1[, "X1"], y0 = X1[, "X2"],
+  x1 = X1_tmatch[, 1], y1 = X1_tmatch[, 2],
+  length = 0.05, col = adjustcolor("gray", alpha = .3)
+)
+
+# Add ellipses
+draw_ellipse(Mu0, Sig0, col = colGpe0, lty = 2)
+draw_ellipse(Mu1, Sig1, col = colGpe1, lty = 2)
+```
+
+### Soft Matching {#sec-cf-sm}
+
+Let us now turn to optimal transport–based matching where each unit is matched to a weighted combination of units in the other group. This allows us to produce synthetic treated units by assigning weights that sum to 1.
+
+```{r soft-matching-X0}
+X0 <- as.matrix(df[df$A == 0, c("X1", "X2")])
+X1 <- as.matrix(df[df$A == 1, c("X1", "X2")])
+n_0 <- nrow(X0)
+n_1 <- nrow(X1)
+```
+
+Let us use uniform weights:
+```{r soft-matching-weights}
+w_0 <- rep(1 / n_0, n_0)
+w_1 <- rep(1 / n_1, n_1)
+```
+
+We use the Euclidean distance between units as costs.
+```{r soft-matching-cost-matrix}
+cost <- as.matrix(dist(rbind(X0, X1)))
+cost <- cost[1:n_0, (n_0 + 1):(n_0 + n_1)]
+```
+
+Let us solve the optimal transport problem to transport units from group~0 to group~1.
+```{r define-ot_plan}
+ot_plan <- transport::transport(
+  w_0, w_1, costm = cost, method = "shortsimplex"
+)
+```
+
+We can then use the mapping to create synthetic individuals in group~1. We use the weights given in the mapping to create the synthetic units as fractions of the other points.
+```{r define-X0_sm}
+ot_plan <- ot_plan |> group_by(from) |> mutate(weight = mass / sum(mass))
+assignment <- rep(NA, n_0)
+
+X0_sm <- ot_plan |> 
+  left_join(
+    as_tibble(X1) |> mutate(to = row_number()),
+    by = "to"
+  ) |> 
+  mutate(
+    across(colnames(X1), ~.x * weight)
+  ) |> 
+  group_by(from) |> 
+  summarise(across(colnames(X1), ~ sum(.x))) |> 
+  arrange(from) |> 
+  select(-from) |> 
+  as.matrix()
+```
+
+Let us create a function, `soft_match()`{.R} to wrap-up the previous codes.
+
+```{r define-soft_match}
+#| code-fold: true
+#| code-summary: The `soft_match()`{.R} function.
+#' @param X_source Source characteristics
+#' @param X_target Target characteristics
+#' @param method Algorithm to use for transport
+soft_match <- function(X_source, 
+                       X_target, 
+                       method = "shortsimplex") {
+  
+  n_source <- nrow(X_source)
+  n_target <- nrow(X_target)
+  
+  # Uniform weights
+  w_source <- rep(1 / n_source, n_source)
+  w_target <- rep(1 / n_target, n_target)
+  
+  # Compute cost matrix (Euclidean distances)
+  cost <- as.matrix(dist(rbind(X_source, X_target)))
+  cost <- cost[1:n_source, (n_source + 1):(n_source + n_target)]
+  
+  # Solve OT problem
+  ot_plan <- transport::transport(
+    w_source, w_target, costm = cost, method = method
+  )
+  
+  # Normalize weights per source unit
+  ot_plan <- dplyr::group_by(ot_plan, from)
+  ot_plan <- dplyr::mutate(ot_plan, weight = mass / sum(mass))
+  
+  # Build transported covariates
+  X_target_tbl <- tibble::as_tibble(X_target) |>
+    dplyr::mutate(to = dplyr::row_number())
+  
+  X_sm <- ot_plan |>
+    dplyr::left_join(X_target_tbl, by = "to") |>
+    dplyr::mutate(
+      dplyr::across(colnames(X_target), ~ .x * weight)
+    ) |>
+    dplyr::group_by(from) |>
+    dplyr::summarise(
+      dplyr::across(colnames(X_target), sum),
+      .groups = "drop"
+    ) |>
+    dplyr::arrange(from) |>
+    dplyr::select(-from) |>
+    as.matrix()
+  
+  X_sm
+}
+```
+
+Let us do soft-matching to get counterfactuals for units from both group 0 and group 1.
+```{r define-X1_sm}
+X0_sm <- soft_match(X_source = X0 , X_target = X1)
+X1_sm <- soft_match(X_source = X1 , X_target = X0)
+```
+
+
+```{r}
+#| code-fold: true
+#| code-summary: Codes to create the Figure.
+#| fig-cap: !expr glue::glue("500 points in each group drawn from bivariates Gaussian distributions and <span style='color:{c2};'>transported values</span> from <span style='color:{c0};'>group 0</span> to <span style='color:{c1};'>group 1</span> (left), and from <span style='color:{c1};'>group 1</span> to <span style='color:{c0};'>group 0</span> (right), using soft matching.", c0 = colGpe0, c1 = colGpe1, c2 = colGpet)
+#| label: fig-gaussian-sm
+#| warning: false
+#| message: false
+par(mar = c(2.1, 2.1, 2.1, 0.1), mfrow = c(1, 2))
+x_lim <- c(-4, 4)
+y_lim <- c(-4, 4)
+
+# From 0 to 1
+plot(
+  X0, 
+  pch = 16, 
+  col = adjustcolor(colGpe0, alpha = .3), 
+  xlim = x_lim, ylim = y_lim, 
+  xlab = "", ylab = "",
+  main = "SM: from A=0 to A=1",
+  family = font_family
+)
+title(xlab = "X1", ylab="X2", line=2, cex.lab=1.2, family = font_family)
+points(X1, col = adjustcolor(colGpe1, alpha = .3), pch = 16)
+points(X0_sm, col = adjustcolor(colGpet, alpha = .3), pch = 17)
+
+# Add arrows from original to transported
+arrows(
+  x0 = X0[, "X1"], y0 = X0[, "X2"],
+  x1 = X0_sm[, 1], y1 = X0_sm[, 2],
+  length = 0.05, col = adjustcolor("gray", alpha = .3)
+)
+
+# Add ellipses
+draw_ellipse(Mu0, Sig0, col = colGpe0, lty = 2)
+draw_ellipse(Mu1, Sig1, col = colGpe1, lty = 2)
+
+
+# From 1 to 0
+plot(
+  X0, 
+  pch = 16, 
+  col = adjustcolor(colGpe0, alpha = .3), 
+  xlim = x_lim, ylim = y_lim, 
+  xlab = "", ylab = "",
+  main = "SM: from A=1 to A=0",
+  family = font_family
+)
+title(xlab = "X1", ylab="X2", line=2, cex.lab=1.2, family = font_family)
+points(X1, col = adjustcolor(colGpe1, alpha = .3), pch = 16)
+points(X1_sm, col = adjustcolor(colGpet, alpha = .3), pch = 17)
+
+# Add arrows from original to transported
+arrows(
+  x0 = X1[, "X1"], y0 = X1[, "X2"],
+  x1 = X1_sm[, 1], y1 = X1_sm[, 2],
+  length = 0.05, col = adjustcolor("gray", alpha = .3)
+)
+# Add ellipses
+draw_ellipse(Mu0, Sig0, col = colGpe0, lty = 2)
+draw_ellipse(Mu1, Sig1, col = colGpe1, lty = 2)
+```
+
+
+### Entropic Regularization via Sinkhorn Algorithm {#sec-cf-skh}
+
+The optimal transport problem can be computationally intensive (not here with the small amount of observations, though). In such cases, one can consider Entropic regularization via Sinkhorn algorithm, associated to the "Matrix Scaling Problem" in @sinkhorn1962factor. Entropic regularization modifies the previous problem by adding a Kullback-Leibler divergence ($\mathrm{d}_{\mathrm{KL}}$) term to the optimization goal
+$$
+\min_{\boldsymbol{P}\in\mathcal{U}(\boldsymbol{1}_{n_0},\boldsymbol{1}_{n_1})}
+\Big\lbrace \langle \boldsymbol{P},\boldsymbol{C}\rangle +\gamma\cdot \mathrm{d}_{\mathrm{KL}}(\boldsymbol{P}||{\boldsymbol{1}_{n_0}}\otimes{\boldsymbol{1}_{n_1}}) \Big\rbrace
+$$ {#eq-regularization}
+where the Kullback-Leibler divergence term corresponds to the opposite of the discrete entropy of the coupling matrix $\boldsymbol{P}$,
+$$
+H(\boldsymbol{P}) := -\sum_{i,j}P_{i,j}(\log(P_{i,j}) - 1).
+$$
+see Proposition 4.3 in @peyre2019computational.
+
+Let us make sure that the observations are stored in matrices for each group.
+```{r define-X0-sinkorn}
+X0 <- as.matrix(df[df$A == 0, c("X1", "X2")])
+X1 <- as.matrix(df[df$A == 1, c("X1", "X2")])
+```
+
+The number of observations in each group:
+```{r define)n_0}
+n_0 <- nrow(X0)
+n_1 <- nrow(X1)
+```
+
+We will use uniform weights:
+```{r define-w_0}
+w_0 <- rep(1 / n_0, n_0)
+w_1 <- rep(1 / n_1, n_1)
+```
+
+We compute the pairwise cost matrix, which is simply the squared Euclidean distance in this example.
+```{r define-cost_mat}
+cost_mat <- as.matrix(dist(rbind(X0, X1)))^2
+C <- cost_mat[1:n_0, (n_0 + 1):(n_0 + n_1)]
+```
+
+
+Then, we can apply the Sinkhorn algorithm to solve the problem.
+```{r define-skh_res}
+skh_res <- T4transport::sinkhornD(
+  D = C, p = 2, wx = w_0, wy = w_1, lambda = 0.1
+)
+```
+
+We extract the transport plan:
+```{r define-ot_plan_skh}
+ot_plan_skh <- skh_res$plan
+```
+
+We normalize the plan:
+```{r normalize-plan}
+row_sums <- rowSums(ot_plan_skh)
+ot_plan_skh <- sweep(ot_plan_skh, 1, row_sums, FUN = "/")
+```
+
+The transported version of `X_1` is the barycentric projection:
+```{r define-X0_skh}
+X0_skh <- ot_plan_skh %*% X1
+```
+
+We wrap these steps in a function, `transport_regul()`{.R}.
+```{r define-transport_regul}
+#| code-fold: true
+#| code-summary: The `transport_regul()`{.R} function.
+
+#' @param X_source Matrix of observations to transport from the source group.
+#' @param X_target Matrix of observations from the target group.
+#' @param gamma A regularization parameter (default to 0.1).
+transport_regul <- function(X_source, 
+                            X_target, 
+                            gamma) {
+
+  X_source <- as.matrix(X_source)
+  X_target <- as.matrix(X_target)
+  n_source <- nrow(X_source)
+  n_target <- nrow(X_target)
+  # Uniform weights
+  w_source <- rep(1 / n_source, n_source)
+  w_target <- rep(1 / n_target, n_target)
+  
+  # Pairwise squared Euclidean distance
+  cost_mat <- as.matrix(dist(rbind(X_source, X_target)))^2
+  C <- cost_mat[1:n_source, (n_source + 1):(n_source + n_target)]
+  
+  # Run Sinkhorn with entropic regularization gamma
+  skh_res <- T4transport::sinkhornD(
+    D = C, p = 2, wx = w_source, wy = w_target, lambda = gamma
+  )
+
+  # Extract and normalize plan
+  ot_plan_skh <- skh_res$plan
+  ot_plan_skh <- sweep(ot_plan_skh, 1, rowSums(ot_plan_skh), FUN = "/")
+  
+  ot_plan_skh %*% X_target
+}
+```
+
+
+We consider the following values for $\gamma$:
+```{r define-gammas}
+gammas <- c(0.1, 1, 5, 10, 100, 1000, 10000)
+```
+
+We transport the observations from group~0 to group~1:
+```{r define-X0_skh_l}
+X0_skh_l <- map(
+  gammas, 
+  ~transport_regul(
+    X_source = X0, 
+    X_target = X1, 
+    gamma = .x
+  )
+)
+names(X0_skh_l) <- as.character(gammas)
+```
+
+And from group~1 to group~0:
+```{r define-X1_skh_l}
+X1_skh_l <- map(
+  gammas, 
+  ~transport_regul(
+    X_source = X1, 
+    X_target = X0, 
+    gamma = .x
+  )
+)
+names(X1_skh_l) <- as.character(gammas)
+```
+
+
+We visualize the results in @fig-gaussian-regularization.
+```{r}
+#| code-fold: true
+#| code-summary: Codes to create the Figure.
+#| fig-cap: !expr glue::glue("500 points in each group drawn from bivariates Gaussian distributions and <span style='color:{c2};'>transported values</span> from <span style='color:{c0};'>group 0</span> to <span style='color:{c1};'>group 1</span>, using optimal transport (first panel) and using entropic regularization and Sinkhorn Algorithm with different values of the regularization parameter $\\gamma$.", c0 = colGpe0, c1 = colGpe1, c2 = colGpet)
+#| label: fig-gaussian-regularization
+#| warning: false
+#| message: false
+layout(matrix(seq_len(length(gammas) + 1), ncol = 4, byrow = TRUE))
+par(mar = c(2.1, 2.1, 2.1, 0.1))
+# par(mar = c(2.1, 2.1, 2.1, 0.1), mfrow = c(1, 2))
+x_lim <- c(-4, 4)
+y_lim <- c(-4, 4)
+
+## OT----
+# From 0 to 1
+plot(X0, 
+     pch = 16, 
+     col = adjustcolor(colGpe0, alpha = .3), 
+     xlim = x_lim, ylim = y_lim, 
+     xlab = "", ylab = "",
+     main = "OT: from A=0 to A=1"
+)
+title(xlab = "X1", ylab="X2", line=2, cex.lab=1.2)
+points(X1, col = adjustcolor(colGpe1, alpha = .3), pch = 16)
+
+# Add arrows from original to transported
+arrows(
+  x0 = X0[, "X1"], y0 = X0[, "X2"],
+  x1 = X0_t[, 1], y1 = X0_t[, 2],
+  length = 0.05, col = adjustcolor("gray", alpha = .3)
+)
+points(X0_t, col = adjustcolor(colGpet, alpha = .3), pch = 17)
+
+# True mean and covariance (scaled by 'a')
+Mu0 <- rep(a * mu0, 2)
+Mu1 <- rep(a * mu1, 2)
+Sig0 <- matrix(c(1, r0, r0, 1), 2, 2)
+Sig1 <- matrix(c(1, r1, r1, 1), 2, 2)
+
+# Add ellipses
+draw_ellipse(Mu0, Sig0, col = colGpe0, lty = 2)
+draw_ellipse(Mu1, Sig1, col = colGpe1, lty = 2)
+
+## OT with Entropic Regularization----
+
+for (gamma in gammas) {
+  X0_skh <- X0_skh_l[[as.character(gamma)]]
+  
+  # From 0 to 1
+  plot(
+    X0, 
+    pch = 16, 
+    col = adjustcolor(colGpe0, alpha = .3), 
+    xlim = x_lim, ylim = y_lim, 
+    xlab = "", ylab = "",
+    main = latex2exp::TeX(paste0("$\\gamma=", gamma, "$"))
+  )
+  title(xlab = "X1", ylab="X2", line=2, cex.lab=1.2)
+  points(X1, col = adjustcolor(colGpe1, alpha = .3), pch = 16)
+  # Add arrows from original to transported
+  arrows(
+    x0 = X0[, "X1"], y0 = X0[, "X2"],
+    x1 = X0_skh[, 1], y1 = X0_skh[, 2],
+    length = 0.05, col = adjustcolor("gray", alpha = .3)
+  )
+  points(X0_skh[, "X1"], X0_skh[, "X2"], col = adjustcolor(colGpet, alpha = .3), pch = 17)
+  
+  # True mean and covariance (scaled by 'a')
+  Mu0 <- rep(a * mu0, 2)
+  Mu1 <- rep(a * mu1, 2)
+  Sig0 <- matrix(c(1, r0, r0, 1), 2, 2)
+  Sig1 <- matrix(c(1, r1, r1, 1), 2, 2)
+  
+  
+  # Add ellipses
+  draw_ellipse(Mu0, Sig0, col = colGpe0, lty = 2)
+  draw_ellipse(Mu1, Sig1, col = colGpe1, lty = 2)
+}
+```
+
+
+### Sequential Transport {#sec-cf-sot}
+
+We will now transport individuals using sequential transport. The results are sensitive to the ordering within the sequence. We will consider both ordering to illustrate this.
 
 - a first marginal univariate optimal transport along the first dimension ($X_1$), then a conditional transport for the second dimension ($X_2 \mid X_1)$: `sequential_transport_12()`{.R},
 - a first marginal univariate optimal transport along the second dimension ($X_2$), then a conditional transport for the first dimension ($X_1 \mid X_2)$: `sequential_transport_21()`{.R},
@@ -926,6 +1448,7 @@ points(X1, col = adjustcolor(colGpe1, alpha = .3), pch = 16)
 # Individual of interest
 points(X0[i, ], col = adjustcolor(colGpe0, alpha = 1), pch = 15, cex = 1.5)
 points(X0_t[i, 1], X0_t[i, 2], col = adjustcolor(colour_methods[["OT"]], alpha = 1), pch = 15, cex = 1.5)
+points(X0_skh_l[["0.1"]][i, 1], X0_skh_l[["0.1"]][i, 2], col = adjustcolor(colour_methods[["skh"]], alpha = 1), pch = 15, cex = 1.5)
 points(X0_st_12[i, 1], X0_st_12[i, 2], col = adjustcolor(colour_methods[["seq_1"]], alpha = 1), pch = 15, cex = 1.5)
 points(X0_st_21[i, 1], X0_st_21[i, 2], col = adjustcolor(colour_methods[["seq_2"]], alpha = 1), pch = 15, cex = 1.5)
 
@@ -936,6 +1459,13 @@ arrows(
   x0 = X0$X1[i], y0 = X0$X2[i],
   x1 = X0_t[i, 1], y1 = X0_t[i, 2],
   length = length_arrow, col = adjustcolor(colour_methods[["OT"]], alpha = 1),
+  lwd = lwd_arrow, lty = 2
+)
+# Regularization
+arrows(
+  x0 = X0$X1[i], y0 = X0$X2[i],
+  x1 = X0_skh_l[["0.1"]][i, 1], y1 = X0_skh_l[["0.1"]][i, 2],
+  length = length_arrow, col = adjustcolor(colour_methods[["skh"]], alpha = 1),
   lwd = lwd_arrow, lty = 2
 )
 # Seq OT (1): X_1 first
@@ -970,15 +1500,15 @@ arrows(
 
 legend(
   "topleft", 
-  legend = c("$x_i$ (Obs.)", "OT", "Seq. OT (1)", "Seq. OT (2)"), 
-  col = c(colGpe0, colour_methods[c("OT", "seq_1", "seq_2")]), 
+  legend = c("$x_i$ (Obs.)", "OT", "Sinkhorn", "Seq. OT (1)", "Seq. OT (2)"), 
+  col = c(colGpe0, colour_methods[c("OT", "skh", "seq_1", "seq_2")]), 
   pch = 15, pt.cex = 1.5, cex = 1,
   bty = "n"
 )
 
 if (export_tikz == TRUE) {
   dev.off()
-
+  
   plot_to_pdf(filename = "gaussian-1-transport", path = "./figs/", keep_tex = FALSE, crop = TRUE)
 }
 ```
@@ -1015,10 +1545,17 @@ Y_name <- "Y"
 ```
 
 ```{r define-med_mod}
-med_mod <- mediation::multimed(
+med_mod_12 <- mediation::multimed(
   outcome = "Y", 
   med.main = "X1", 
   med.alt = "X2", 
+  treat = "A", 
+  data = df
+)
+med_mod_21 <- mediation::multimed(
+  outcome = "Y", 
+  med.main = "X2", 
+  med.alt = "X1", 
   treat = "A", 
   data = df
 )
@@ -1033,23 +1570,26 @@ We do not load the {mediation} package since it creates multiple conflicts with 
 
 Let us retrieve $\bar{\delta}(0)$ (average causal mediation effect for $a=0$):
 ```{r define-delta_0}
-(delta_0_med <- mean((med_mod$d0.lb + med_mod$d0.ub) / 2))
+delta_0_med <- mean((med_mod_12$d0.lb + med_mod_12$d0.ub) / 2) +
+  mean((med_mod_21$d0.lb + med_mod_21$d0.ub) / 2)
+delta_0_med
 ```
 
-Then, let us get $\bar{\zeta}(1)$ (average direct effect for $a=1$):
-```{r define-zeta_1}
-(zeta_1_med <- mean((med_mod$z1.lb + med_mod$z1.ub) / 2))
+The total average effect, $\bar{\tau}$:
+```{r}
+(tot_effect_med <- med_mod_12$tau)
 ```
 
-We can then compute the total causal effect:
-```{r define-tot_effect_t}
-(tot_effect_med <- delta_0_med + zeta_1_med)
+We can then deduct the average direct effect for $a=1$, i.e., $\bar{\zeta}(1)$:
+```{r}
+(zeta_1_med <- tot_effect_med-delta_0_med)
 ```
 
 Let us also retrieve $\bar{\delta}(1)$ (average causal mediation effect for $a=1$) and $\bar{\zeta}(0)$ (average direct effect for $a=0$):
 ```{r define-delta_1}
-delta_1_med <- mean((med_mod$d1.lb + med_mod$d1.ub) / 2)
-zeta_0_med <- mean((med_mod$z0.lb + med_mod$z0.ub) / 2)
+delta_1_med <- mean((med_mod_12$d1.lb + med_mod_12$d1.ub) / 2) + 
+  mean((med_mod_21$d1.lb + med_mod_21$d1.ub) / 2)
+zeta_0_med <- tot_effect_med - delta_1_med
 c(delta_1_med, zeta_0_med)
 ```
 
@@ -1204,10 +1744,59 @@ cbind(
 )
 ```
 
+### With Transport-based Matching
+
+We apply the same function as that used with the counterfactuals obtained with optimal transport (`causal_effects_cf()`{.R}). However, here, we feed it with the counterfactuals obtained with the transport-based many-to-one matching (@sec-cf-tmatch).
+
+```{r define-causal_effects_tmatch}
+causal_effects_tmatch <- causal_effects_cf(
+  data_untreated = tb_untreated, 
+  data_treated = tb_treated,
+  data_cf_untreated = as_tibble(X0_tmatch) |> magrittr::set_colnames(c("X1", "X2")),
+  data_cf_treated = as_tibble(X1_tmatch) |> magrittr::set_colnames(c("X1", "X2")),
+  Y_name = Y_name, 
+  A_name = A_name, 
+  A_untreated = A_untreated
+)
+```
+
+
+### With Entropic Regularization
+
+We apply the same function as that used with the counterfactuals obtained with optimal transport (`causal_effects_cf()`{.R}). However, here, we feed it with the counterfactuals obtained with the regularization method (@sec-cf-skh).
+
+```{r}
+causal_effect_skh <- map2(
+  X0_skh_l, X1_skh_l, 
+  ~causal_effects_cf(
+    data_untreated = tb_untreated, 
+    data_treated = tb_treated,
+    data_cf_untreated = as_tibble(.x) |> magrittr::set_colnames(c("X1", "X2")),
+    data_cf_treated = as_tibble(.y) |> magrittr::set_colnames(c("X1", "X2")),
+    Y_name = Y_name, 
+    A_name = A_name, 
+    A_untreated = A_untreated
+  )
+)
+map(
+  causal_effect_skh,
+  ~tibble(
+    delta_0 = .x$delta_0,
+    zeta_1 = .x$zeta_1,
+    delta_1 = .x$delta_1,
+    zeta_0 = .x$zeta_0,
+    tot_effect = .x$tot_effect,
+    tot_effect_obs = .x$tot_effect_obs
+  )
+) |> 
+  list_rbind(names_to = "gamma")
+```
+
+
 
 ### With Sequential Optimal Transport
 
-We apply the same function as that used with the counterfactuals obtained with optimal transport (`causal_effects_cf()`{.R}). However, here, we feed it with the counterfactuals obtained with sequential transport. For those where we first transport $X_1$ and then $X_2 \mid X_1$:
+Again, we `causal_effects_cf()`{.R}), feeding it with the counterfactuals obtained with sequential transport (sec-cf-sot). For those where we first transport $X_1$ and then $X_2 \mid X_1$:
 ```{r define-causal_effect_sot_12}
 causal_effect_sot_12 <- causal_effects_cf(
   data_untreated = tb_untreated, 
@@ -1238,6 +1827,7 @@ causal_effect_sot_21 <- causal_effects_cf(
 ### Summary
 
 ```{r summary}
+#| code-fold: true
 tribble(
   ~Method, ~Name, ~Value,
   "Theoretical", "delta(0)", (a1+a2) * (mu1-mu0),
@@ -1261,6 +1851,26 @@ tribble(
   "OT (Obs)", "delta(0)", causal_effects_ot$delta_0_obs,
   "OT (Obs)", "delta(1)", causal_effects_ot$delta_1_obs,
   "OT (Obs)", "tau", causal_effects_ot$tot_effect_obs,
+  #
+  "Matching", "delta(0)", causal_effects_tmatch$delta_0,
+  "Matching", "delta(1)", causal_effects_tmatch$delta_1,
+  "Matching", "zeta(0)", causal_effects_tmatch$zeta_0,  
+  "Matching", "zeta(1)", causal_effects_tmatch$zeta_1,
+  "Matching", "tau", causal_effects_tmatch$tot_effect,
+  #
+  "Matching (Obs)", "delta(0)", causal_effects_tmatch$delta_0_obs,
+  "Matching (Obs)", "delta(1)", causal_effects_tmatch$delta_1_obs,
+  "Matching (Obs)", "tau", causal_effects_tmatch$tot_effect_obs,
+  #
+  "Sinkhorn (gamma=.1)", "delta(0)", causal_effect_skh[["0.1"]]$delta_0,
+  "Sinkhorn (gamma=.1)", "delta(1)", causal_effect_skh[["0.1"]]$delta_1,
+  "Sinkhorn (gamma=.1)", "zeta(0)", causal_effect_skh[["0.1"]]$zeta_0,  
+  "Sinkhorn (gamma=.1)", "zeta(1)", causal_effect_skh[["0.1"]]$zeta_1,
+  "Sinkhorn (gamma=.1)", "tau", causal_effect_skh[["0.1"]]$tot_effect,
+  #
+  "Sinkhorn (gamma=.1) (Obs)", "delta(0)", causal_effect_skh[["0.1"]]$delta_0_obs,
+  "Sinkhorn (gamma=.1) (Obs)", "delta(1)", causal_effect_skh[["0.1"]]$delta_1_obs,
+  "Sinkhorn (gamma=.1) (Obs)", "tau", causal_effect_skh[["0.1"]]$tot_effect_obs,
   #
   "SOT (1)", "delta(0)", causal_effect_sot_12$delta_0,
   "SOT (1)", "delta(1)", causal_effect_sot_12$delta_1,
@@ -1290,13 +1900,15 @@ tribble(
 Let us have a look at some individuals. We focus on the one with the predicted $\tau_i$ estimated using Optimal Transport which is the closest to the theoretical value, and the one that is the farthest. Let us get the theoretical values:
 ```{r define-tau_theo}
 (tau_theo <- (a1 + a2) * (mu1 - mu0) + a0)
-(tau_med <- tot_effect_med)
+(tau_med <- tot_effect_med[[1]])
 (tau_ot <- causal_effects_ot$tot_effect)
+(tau_tmatch <- causal_effects_tmatch$tot_effect)
+(tau_skh <- causal_effect_skh[["0.1"]]$tot_effect)
 (tau_sot_12 <- causal_effect_sot_12$tot_effect)
 (tau_sot_21 <- causal_effect_sot_21$tot_effect)
 ```
 
-We create a table that contains the coordinates of individuals from `r colorize("group 0", colGpe0)`), their transported coordinates (using OT, and sequential transport), and their estimated values for $\delta_i(0)$, $\zeta_i(1)$, and $\tau_i$, obtained with OT and with sequential transport.
+We create a table that contains the coordinates of individuals from `r colorize("group 0", colGpe0)`), their transported coordinates (using OT, and sequential transport), and their estimated values for $\delta_i(0)$, $\zeta_i(1)$, and $\tau_i$, obtained with the differenc counterfactuals.
 
 ```{r define-tb_indiv_0}
 tb_indiv_0 <- 
@@ -1305,6 +1917,10 @@ tb_indiv_0 <-
     X2 = X0$X2,
     X1_t = X0_t[, 1], # with OT
     X2_t = X0_t[, 2], # idem
+    X1_tmatch = X0_tmatch[, 1], # with transport-based matching
+    X2_tmatch = X0_tmatch[, 2], # idem
+    X1_skh = X0_skh_l[["0.1"]][, 1], # with Regularization
+    X2_skh = X0_skh_l[["0.1"]][, 2], # idem
     X1_sot_12 = X0_st_12[, 1], # with Seq T (1)
     X2_sot_12 = X0_st_12[, 2], # idem
     X1_sot_21 = X0_st_21[, 1], # with Seq T (2)
@@ -1312,6 +1928,12 @@ tb_indiv_0 <-
     # OT
     delta_0_i_ot = causal_effects_ot$delta_0_i,
     zeta_1_i_ot = causal_effects_ot$zeta_1_i,
+    # Matching
+    delta_0_i_tmatch = causal_effects_tmatch$delta_0_i,
+    zeta_1_i_tmatch = causal_effects_tmatch$zeta_1_i,
+    # Skh
+    delta_0_i_skh = causal_effect_skh[["0.1"]]$delta_0_i,
+    zeta_1_i_skh = causal_effect_skh[["0.1"]]$zeta_1_i,
     # ST (1)
     delta_0_i_sot_12 = causal_effect_sot_12$delta_0_i,
     zeta_1_i_sot_12 = causal_effect_sot_12$zeta_1_i,
@@ -1322,12 +1944,16 @@ tb_indiv_0 <-
   # Total causal effect
   mutate(
     tau_i_ot = delta_0_i_ot + zeta_1_i_ot,
+    tau_i_tmatch = delta_0_i_tmatch + zeta_1_i_tmatch,
+    tau_i_skh = delta_0_i_skh + zeta_1_i_skh,
     tau_i_sot_12 = delta_0_i_sot_12 + zeta_1_i_sot_12,
     tau_i_sot_21 = delta_0_i_ot + zeta_1_i_sot_21
   ) |> 
   # Distance to the theoretical value
   mutate(
     tau_i_ot_dist = abs(tau_i_ot - tau_theo),
+    tau_i_tmatch_dist = abs(tau_i_tmatch - tau_theo),
+    tau_i_skh_dist = abs(tau_i_skh - tau_theo),
     tau_i_sot_12_dist = abs(tau_i_sot_12 - tau_theo),
     tau_i_sot_21_dist = abs(tau_i_sot_21 - tau_theo)
   )
@@ -1339,7 +1965,7 @@ ind_closest <- order(tb_indiv_0$tau_i_ot_dist)[1]
 ind_farthest <- rev(order(tb_indiv_0$tau_i_ot_dist))[1]
 ```
 
-Their coordinates are shown in @tab-individual-causal-effects-toy-obs, as well as the coordinates of their counterfactuals.
+Their coordinates are shown in @tbl-individual-causal-effects-toy-obs, as well as the coordinates of their counterfactuals.
 
 ```{r}
 #| code-fold: true
@@ -1347,7 +1973,7 @@ Their coordinates are shown in @tab-individual-causal-effects-toy-obs, as well a
 #| message: false
 #| warning: false
 #| tbl-cap: Coordinates of two untreated units before and after transport.
-#| label: tab-individual-causal-effects-toy-obs
+#| label: tbl-individual-causal-effects-toy-obs
 format_num <- function(x) scales::number(x, accuracy = 0.1)
 
 tb_indiv_0_short <- 
@@ -1369,15 +1995,19 @@ tb_indiv_0_short <-
   mutate(
     coord = str_c("(", X1, ", ", X2, ")"),
     coord_OT = str_c("(", X1_t, ", ", X2_t, ")"),
+    coord_TM = str_c("(", X1_tmatch, ", ", X2_tmatch, ")"),
+    coord_SKH = str_c("(", X1_skh, ", ", X2_skh, ")"),
     coord_ST1 = str_c("(", X1_sot_12, ", ", X2_sot_12, ")"),
     coord_ST2 = str_c("(", X1_sot_21, ", ", X2_sot_21, ")")
   ) |> 
   select(
-    -X1, -X2, -X1_t, -X2_t, -X1_sot_12, -X2_sot_12, -X1_sot_21, -X2_sot_21
+    -X1, -X2, -X1_t, -X2_t, -X1_tmatch, -X2_tmatch,
+    -X1_skh, -X2_skh,
+    -X1_sot_12, -X2_sot_12, -X1_sot_21, -X2_sot_21
   ) |> 
   pivot_longer(
     cols = c(
-      -obs_type, -coord, -coord_OT, -coord_ST1, -coord_ST2
+      -obs_type, -coord, -coord_OT, -coord_TM, -coord_SKH, -coord_ST1, -coord_ST2
     )
   ) |> 
   mutate(
@@ -1394,6 +2024,8 @@ tb_indiv_0_short <-
     method = case_when(
       str_detect(name, "_med$") ~ "CM",
       str_detect(name, "_ot$") ~ "OT",
+      str_detect(name, "_tmatch$") ~ "OT-M",
+      str_detect(name, "_skh$") ~ "SKH",
       str_detect(name, "_sot_12$") ~ "ST(1)",
       str_detect(name, "sot_21$") ~ "ST(2)",
       TRUE ~ ""
@@ -1403,15 +2035,24 @@ tb_indiv_0_short <-
   pivot_wider(
     names_from = type, values_from = value
   )
+
+# tb_indiv_0_short |>
+#   select(obs_type, method, delta, zeta, tau) |>
+#   pivot_longer(cols = c(delta, zeta, tau)) |>
+#   pivot_wider(names_from = method, values_from = value) |>
+#   arrange(name, obs_type) |>
+#   select(-obs_type) |>
+#   kableExtra::kbl(booktabs = TRUE, format = "latex")
+
 tb_indiv_0_short |> 
   group_by(obs_type) |> 
   slice_head(n=1) |> 
-  select(coord, coord_OT, coord_ST1, coord_ST2) |> 
+  select(coord, coord_OT, coord_TM, coord_SKH, coord_ST1, coord_ST2) |> 
   kableExtra::kbl(booktabs = TRUE)
 ```
 
 
-The estimation of the direct, indirect and total effects are reported in @tab-individual-causal-effects-toy, depending on the method used to create the counterfactual.
+The estimation of the direct, indirect and total effects are reported in @tbl-individual-causal-effects-toy, depending on the method used to create the counterfactual.
 
 ```{r}
 #| code-fold: true
@@ -1419,7 +2060,7 @@ The estimation of the direct, indirect and total effects are reported in @tab-in
 #| message: false
 #| warning: false
 #| tbl-cap: Estimated values of $\delta_i(0)$, $\zeta_i(1)$, and $\tau_i$ for the two individuals, depending on the transport method.
-#| label: tab-individual-causal-effects-toy
+#| label: tbl-individual-causal-effects-toy
 tb_indiv_0_short |> 
   select(method, delta, zeta, tau) |> 
   kableExtra::kbl(booktabs = TRUE)
@@ -1430,17 +2071,22 @@ tb_indiv_0_short |>
 ```{r}
 #| code-fold: true
 #| code-summary: Codes to create the Figure
+#| fig-width: 6
+#| fig-height: 3
 export_tikz <- FALSE
 file_name <- "gaussian-tau-two-indiv"
-
+width_tikz <- 3.3
+height_tikz <- 1.55
 if (export_tikz == TRUE)
-  tikz(paste0("figs/", file_name, ".tex"), width = 3.2, height = 1.5)
+  tikz(paste0("figs/", file_name, ".tex"), width = width_tikz, height = height_tikz)
 
 # par(mar = c(2.1, 2.1, .1, .1), mfrow = c(1, 2))
 layout(matrix(c(1, 2), nrow = 1, byrow = TRUE), widths = c(10,8.1))
 par(mar = c(2.1, 2.1, .1, .1))
 ## Closest----
-cex_pts <- .5
+cex_pts <- .3
+lwd_arrow <- 1.5
+length_arrow <- .05
 plot(
   X0, 
   pch = 16, 
@@ -1467,6 +2113,24 @@ arrows(
   length = length_arrow, col = adjustcolor(colour_methods[["OT"]], alpha = 1),
   lwd = lwd_arrow, lty = 2
 )
+# Arrows to OT-Matching
+arrows(
+  x0 = X0$X1[c(ind_closest)],
+  y0 = X0$X2[c(ind_closest)],
+  x1 = X0_tmatch[c(ind_closest), "X1"], 
+  y1 = X0_tmatch[c(ind_closest), "X2"],
+  length = length_arrow, col = adjustcolor(colour_methods[["OT-M"]], alpha = 1),
+  lwd = lwd_arrow, lty = 2
+)
+# Arrows to SKH
+arrows(
+  x0 = X0$X1[c(ind_closest)],
+  y0 = X0$X2[c(ind_closest)],
+  x1 = X0_skh_l[["0.1"]][c(ind_closest), "X1"], 
+  y1 = X0_skh_l[["0.1"]][c(ind_closest), "X2"],
+  length = length_arrow, col = adjustcolor(colour_methods[["skh"]], alpha = 1),
+  lwd = lwd_arrow, lty = 2
+)
 # Seq OT (1): X_1 first
 # points(
 #   X0_st_12[c(ind_closest), 1], 
@@ -1489,12 +2153,6 @@ arrows(
   length = length_arrow, col = adjustcolor(colour_methods[["seq_1"]], alpha = .5),
   lwd = lwd_arrow
 )
-# Seq OT (2): X_2 first
-# points(
-#   X0$X1[c(ind_closest)], 
-#   X0_st_21[c(ind_closest),2], 
-#   col = adjustcolor(colour_methods[["seq_2"]], alpha = .5), pch = 16, cex = 1
-# )
 arrows(
   x0 = X0$X1[c(ind_closest)], 
   y0 = X0$X2[c(ind_closest)],
@@ -1524,6 +2182,18 @@ points(
   X0_t[c(ind_closest), "X2"], 
   col = colour_methods[["OT"]], pch = c(15), cex = 1
 )
+# With OT_based matching
+points(
+  X0_tmatch[c(ind_closest), "X1"], 
+  X0_tmatch[c(ind_closest), "X2"], 
+  col = colour_methods[["OT-M"]], pch = c(15), cex = 1
+)
+# With Sinkhorn
+points(
+  X0_skh_l[["0.1"]][c(ind_closest), "X1"], 
+  X0_skh_l[["0.1"]][c(ind_closest), "X2"], 
+  col = colour_methods[["skh"]], pch = c(15), cex = 1
+)
 # With Sequential transport (1)
 points(
   X0_st_12[c(ind_closest), 1], 
@@ -1539,44 +2209,44 @@ points(
 
 
 if (export_tikz == FALSE) {
-  lab_points_ot <- latex2exp::TeX(
-    paste0(
-      "$\\tau_i^{OT}=", 
-      round(tb_indiv_0$tau_i_ot[c(ind_closest)], 1), "$"
-    )
-  )
-  lab_points_sot_12 <- latex2exp::TeX(
-    paste0(
-      "$\\tau_i^{ST(1)}=", 
-      round(tb_indiv_0$tau_i_sot_12[c(ind_closest)], 1), "$"
-    )
-  )
-  lab_points_sot_21 <- latex2exp::TeX(
-    paste0(
-      "$\\tau_i^{ST(2)}=", 
-      round(tb_indiv_0$tau_i_sot_21[c(ind_closest)], 1), "$"
-    )
-  )
+  lab_points_ot <- latex2exp::TeX("$\\tau_i^{OT}$")
+  # round(tb_indiv_0$tau_i_ot[c(ind_closest)], 1)
+  lab_points_tmatch <- latex2exp::TeX("$\\tau_i^{OT-M}$")
+  # round(tb_indiv_0$tau_i_tmatch[c(ind_closest)], 1)
+  lab_points_skh <- latex2exp::TeX("$\\tau_i^{SKH}$")
+  # round(tb_indiv_0$tau_i_skh[c(ind_closest)], 1)
+  lab_points_sot_12 <- latex2exp::TeX("$\\tau_i^{ST(1)}$")
+  round(tb_indiv_0$tau_i_sot_12[c(ind_closest)], 1)
+  lab_points_sot_21 <- latex2exp::TeX("$\\tau_i^{ST(2)}$")
+  round(tb_indiv_0$tau_i_sot_21[c(ind_closest)], 1)
 } else {
-  lab_points_ot <- paste0(
-    "$\\tau_i^{\\textnormal{OT}}=", 
-    round(tb_indiv_0$tau_i_ot[c(ind_closest)], 1), "$"
-  )
-  lab_points_sot_12 <- paste0(
-    "$\\tau_i^{\\textnormal{ST}(1)}=", 
-    round(tb_indiv_0$tau_i_sot_12[c(ind_closest)], 1), "$"
-  )
-  lab_points_sot_21 <- paste0(
-    "$\\tau_i^{\\textnormal{ST}(2)}=", 
-    round(tb_indiv_0$tau_i_sot_21[c(ind_closest)], 1), "$"
-  )
+  lab_points_ot <- "OT"
+  lab_points_tmatch <- "OT-M"
+  lab_points_skh <- "SKH"
+  lab_points_sot_12 <- "ST(1)"
+  lab_points_sot_21 <- "ST(2)"
 }
-# Initial point
+
+# \tau_i with OT
 text(
-  x = X0_t[c(ind_closest), "X1"], 
+  x = X0_t[c(ind_closest), "X1"] + 1, 
   y = X0_t[c(ind_closest), "X2"] + .5, 
   labels = lab_points_ot,
   col = colour_methods[["OT"]]
+)
+# \tau_i with OT-M
+text(
+  x = X0_tmatch[c(ind_closest), "X1"] -1.5, 
+  y = X0_tmatch[c(ind_closest), "X2"] + .5, 
+  labels = lab_points_tmatch,
+  col = colour_methods[["OT-M"]]
+)
+# \tau_i with SKH
+text(
+  x = X0_skh_l[["0.1"]][c(ind_closest), 1] - .25, 
+  y = X0_skh_l[["0.1"]][c(ind_closest), 2] - 1, 
+  labels = lab_points_skh,
+  col = colour_methods[["skh"]]
 )
 text(
   x = X0_st_12[c(ind_closest), 1], 
@@ -1585,7 +2255,7 @@ text(
   col = colour_methods[["seq_1"]]
 )
 text(
-  x = X0_st_21[c(ind_closest), 1], 
+  x = X0_st_21[c(ind_closest), 1] + 1, 
   y = X0_st_21[c(ind_closest), 2] - 1, 
   labels = lab_points_sot_21,
   col = colour_methods[["seq_2"]]
@@ -1617,6 +2287,24 @@ arrows(
   x1 = X0_t[c(ind_farthest), "X1"], 
   y1 = X0_t[c(ind_farthest), "X2"],
   length = length_arrow, col = adjustcolor(colour_methods[["OT"]], alpha = 1),
+  lwd = lwd_arrow, lty = 2
+)
+# Arrows to OT-Matching
+arrows(
+  x0 = X0$X1[c(ind_farthest)],
+  y0 = X0$X2[c(ind_farthest)],
+  x1 = X0_tmatch[c(ind_farthest), "X1"], 
+  y1 = X0_tmatch[c(ind_farthest), "X2"],
+  length = length_arrow, col = adjustcolor(colour_methods[["OT-M"]], alpha = 1),
+  lwd = lwd_arrow, lty = 2
+)
+# Arrows to SKH
+arrows(
+  x0 = X0$X1[c(ind_farthest)],
+  y0 = X0$X2[c(ind_farthest)],
+  x1 = X0_skh_l[["0.1"]][c(ind_farthest), "X1"], 
+  y1 = X0_skh_l[["0.1"]][c(ind_farthest), "X2"],
+  length = length_arrow, col = adjustcolor(colour_methods[["skh"]], alpha = 1),
   lwd = lwd_arrow, lty = 2
 )
 # Seq OT (1): X_1 first
@@ -1676,6 +2364,18 @@ points(
   X0_t[c(ind_farthest), "X2"], 
   col = colour_methods[["OT"]], pch = c(15), cex = 1
 )
+# With OT-Matching
+points(
+  X0_tmatch[c(ind_farthest), "X1"], 
+  X0_tmatch[c(ind_farthest), "X2"], 
+  col = colour_methods[["OT-M"]], pch = c(15), cex = 1
+)
+# With Sinkhorn
+points(
+  X0_skh_l[["0.1"]][c(ind_farthest), "X1"], 
+  X0_skh_l[["0.1"]][c(ind_farthest), "X2"], 
+  col = colour_methods[["skh"]], pch = c(15), cex = 1
+)
 # With Sequential transport (1)
 points(
   X0_st_12[c(ind_farthest), 1], 
@@ -1691,53 +2391,46 @@ points(
 
 
 if (export_tikz == FALSE) {
-  lab_points_ot <- latex2exp::TeX(
-    paste0(
-      "$\\tau_i^{OT}=", 
-      round(tb_indiv_0$tau_i_ot[c(ind_farthest)], 1), "$"
-    )
-  )
-  lab_points_sot_12 <- latex2exp::TeX(
-    paste0(
-      "$\\tau_i^{ST(1)}=", 
-      round(tb_indiv_0$tau_i_sot_12[c(ind_farthest)], 1), "$"
-    )
-  )
-  lab_points_sot_21 <- latex2exp::TeX(
-    paste0(
-      "$\\tau_i^{ST(2)}=", 
-      round(tb_indiv_0$tau_i_sot_21[c(ind_farthest)], 1), "$"
-    )
-  )
+  lab_points_ot <- latex2exp::TeX("$\\tau_i^{OT}")
+  lab_points_tmatch <- latex2exp::TeX("$\\tau_i^{OT-M}$")
+  lab_points_skh <- latex2exp::TeX("$\\tau_i^{SKH}$")
+  lab_points_sot_12 <- latex2exp::TeX("$\\tau_i^{ST(1)}$")
+  lab_points_sot_21 <- latex2exp::TeX("$\\tau_i^{ST(2)}$")
 } else {
-  lab_points_ot <- paste0(
-    "$\\tau_i^{\\textnormal{OT}}=", 
-    round(tb_indiv_0$tau_i_ot[c(ind_farthest)], 1), "$"
-  )
-  lab_points_sot_12 <- paste0(
-    "$\\tau_i^{\\textnormal{ST}(1)}=", 
-    round(tb_indiv_0$tau_i_sot_12[c(ind_farthest)], 1), "$"
-  )
-  lab_points_sot_21 <- paste0(
-    "$\\tau_i^{\\textnormal{ST}(2)}=", 
-    round(tb_indiv_0$tau_i_sot_21[c(ind_farthest)], 1), "$"
-  )
+  lab_points_ot <- "OT"
+  lab_points_tmatch <- "OT-M"
+  lab_points_skh <- "SKH"
+  lab_points_sot_12 <- "ST(1)"
+  lab_points_sot_21 <- "ST(2)"
 }
-# Initial point
+# \tau with OT
 text(
   x = X0_t[c(ind_farthest), "X1"], 
-  y = X0_t[c(ind_farthest), "X2"] + .5, 
+  y = X0_t[c(ind_farthest), "X2"] + .75, 
   labels = lab_points_ot,
   col = colour_methods[["OT"]]
 )
+# \tau with OT-Matching
+text(
+  x = X0_tmatch[c(ind_farthest), "X1"] - .25, 
+  y = X0_tmatch[c(ind_farthest), "X2"] + 1, 
+  labels = lab_points_tmatch,
+  col = colour_methods[["OT-M"]]
+)
+text(
+  x = X0_skh_l[["0.1"]][c(ind_farthest), "X1"] - 1.5, 
+  y = X0_skh_l[["0.1"]][c(ind_farthest), "X2"], 
+  labels = lab_points_skh,
+  col = colour_methods[["skh"]]
+)
 text(
   x = X0_st_12[c(ind_farthest), 1], 
-  y = X0_st_12[c(ind_farthest), 2] + .5, 
+  y = X0_st_12[c(ind_farthest), 2] + 1, 
   labels = lab_points_sot_12,
   col = colour_methods[["seq_1"]]
 )
 text(
-  x = X0_st_21[c(ind_farthest), 1] - 1.5, 
+  x = X0_st_21[c(ind_farthest), 1], 
   y = X0_st_21[c(ind_farthest), 2] - 1, 
   labels = lab_points_sot_21,
   col = colour_methods[["seq_2"]]
@@ -1757,7 +2450,7 @@ if (export_tikz == TRUE) {
 Let us perform Monte-Carlo simulations to observe the stability of the previous estimations. We define a function, `sim_f()`{.R}, to perform three steps:
 
 1. Generate a sample from the DGP shown in @sec-dgp,
-2. Build the counterfactuals using OT and Sequential transport as in @sec-cf,
+2. Build the counterfactuals using OT, entropy regularized transport, and Sequential transport as in @sec-cf,
 3. Compute the causal effects as in @sec-causal-effects.
 
 
@@ -1801,7 +2494,7 @@ sim_f <- function(n = 500,
     mu_source = Mu1, sigma_source = Sigma0, 
     mu_target = Mu0, sigma_target = Sigma0
   )  
-
+  
   # Apply transport map to treated units (A = 1)
   X0 <- as.matrix(df[df$A == 0, c("X1", "X2")])
   X1 <- as.matrix(df[df$A == 1, c("X1", "X2")])
@@ -1809,6 +2502,24 @@ sim_f <- function(n = 500,
   colnames(X0_t) <- c(c("X1", "X2"))
   X1_t <- apply_ot_transport(X = X1, mapping = ot_map_1_to_0)
   colnames(X1_t) <- c(c("X1", "X2"))
+  
+  # With OT-Matching
+  X0_tmatch <- transport_many_to_one(X_source = X0, X_target = X1)
+  X1_tmatch <- transport_many_to_one(X_source = X1, X_target = X0)
+  
+  ## With Entropy regularized transport
+  # Transport from group 0 to group 1:
+  X0_skh <- transport_regul(
+    X_source = X0, 
+    X_target = X1, 
+    gamma = 0.1
+  )
+  # Transport from group 1 to group 0:
+  X1_skh <- transport_regul(
+    X_source = X1, 
+    X_target = X0, 
+    gamma = 0.1
+  )
   
   ## With Sequential Transport
   # Transport from group 0 to group 1: X1 then X2 | X1
@@ -1835,18 +2546,28 @@ sim_f <- function(n = 500,
   Y_name <- "Y"
   
   # Causal Mediation Analysis
-  med_mod <- mediation::multimed(
+  med_mod_12 <- mediation::multimed(
     outcome = "Y", 
     med.main = "X1", 
     med.alt = "X2", 
     treat = "A", 
-    data = tb
+    data = df
   )
-  delta_0_med <- mean((med_mod$d0.lb + med_mod$d0.ub) / 2)
-  delta_1_med <- mean((med_mod$d1.lb + med_mod$d1.ub) / 2)
-  zeta_0_med <- mean((med_mod$z0.lb + med_mod$z0.ub) / 2)
-  zeta_1_med <- mean((med_mod$z1.lb + med_mod$z1.ub) / 2)
-  tot_effect_med <- delta_0_med + zeta_1_med
+  med_mod_21 <- mediation::multimed(
+    outcome = "Y", 
+    med.main = "X2", 
+    med.alt = "X1", 
+    treat = "A", 
+    data = df
+  )
+  
+  delta_0_med <- mean((med_mod_12$d0.lb + med_mod_12$d0.ub) / 2) +
+    mean((med_mod_21$d0.lb + med_mod_21$d0.ub) / 2)
+  delta_1_med <- mean((med_mod_12$d1.lb + med_mod_12$d1.ub) / 2) + 
+    mean((med_mod_21$d1.lb + med_mod_21$d1.ub) / 2)
+  tot_effect_med <- med_mod_12$tau
+  zeta_0_med <- tot_effect_med - delta_1_med
+  zeta_1_med <- tot_effect_med-delta_0_med
   
   # With OT counterfactuals
   tb_untreated <- tb |> filter(!!sym(A_name) == !!A_untreated)
@@ -1861,6 +2582,29 @@ sim_f <- function(n = 500,
     A_name = A_name, 
     A_untreated = A_untreated
   )
+  
+  # With OT-Matching counterfactuals
+  causal_effects_tmatch <- causal_effects_cf(
+    data_untreated = tb_untreated, 
+    data_treated = tb_treated,
+    data_cf_untreated = as_tibble(X0_tmatch),
+    data_cf_treated = as_tibble(X1_tmatch),
+    Y_name = Y_name, 
+    A_name = A_name, 
+    A_untreated = A_untreated
+  )
+  
+  # With entropy regularized transport
+  causal_effects_skh <- causal_effects_cf(
+    data_untreated = tb_untreated, 
+    data_treated = tb_treated,
+    data_cf_untreated = as_tibble(X0_skh),
+    data_cf_treated = as_tibble(X1_skh),
+    Y_name = Y_name, 
+    A_name = A_name, 
+    A_untreated = A_untreated
+  )
+  
   # With Sequential Transport counterfactuals
   causal_effect_sot_12 <- causal_effects_cf(
     data_untreated = tb_untreated, 
@@ -1880,7 +2624,7 @@ sim_f <- function(n = 500,
     A_name = A_name, 
     A_untreated = A_untreated
   )
-
+  
   tibble(
     # Mediation
     delta_0_med = delta_0_med,
@@ -1897,6 +2641,24 @@ sim_f <- function(n = 500,
     zeta_1_ot = causal_effects_ot$zeta_1,
     tot_effect_ot = causal_effects_ot$tot_effect,
     tot_effect_ot_obs = causal_effects_ot$tot_effect_obs,
+    # OT-M
+    delta_0_tmatch = causal_effects_tmatch$delta_0,
+    delta_1_tmatch = causal_effects_tmatch$delta_1,
+    delta_0_tmatch_obs = causal_effects_tmatch$delta_0_obs,
+    delta_1_tmatch_obs = causal_effects_tmatch$delta_1_obs,
+    zeta_0_tmatch = causal_effects_tmatch$zeta_0,
+    zeta_1_tmatch = causal_effects_tmatch$zeta_1,
+    tot_effect_tmatch = causal_effects_tmatch$tot_effect,
+    tot_effect_tmatch_obs = causal_effects_tmatch$tot_effect_obs,
+    # SKH
+    delta_0_skh = causal_effects_skh$delta_0,
+    delta_1_skh = causal_effects_skh$delta_1,
+    delta_0_skh_obs = causal_effects_skh$delta_0_obs,
+    delta_1_skh_obs = causal_effects_skh$delta_1_obs,
+    zeta_0_skh = causal_effects_skh$zeta_0,
+    zeta_1_skh = causal_effects_skh$zeta_1,
+    tot_effect_skh = causal_effects_skh$tot_effect,
+    tot_effect_skh_obs = causal_effects_skh$tot_effect_obs,
     # SOT 12
     delta_0_sot_12 = causal_effect_sot_12$delta_0,
     delta_1_sot_12 = causal_effect_sot_12$delta_1,
@@ -1930,7 +2692,8 @@ sim_f <- function(n = 500,
 The simulations can be run in parallel, as follows.
 
 ```{r mc-simul, eval=FALSE}
-# This chunk takes about XX minutes to run.
+# This chunk takes 3 minutes and 40 seconds to run
+# (MB Pro 2023, Apple M2 Pro ship, 32 GB RAM).
 # We do not evaluate when compiling the document.
 # Instead, we load previously obtained results.
 library(pbapply)
@@ -1949,6 +2712,7 @@ clusterEvalQ(cl, {
 clusterExport(
   cl = cl, c(
     "gen_data", "compute_ot_map", "apply_ot_transport",
+    "transport_regul", "transport_many_to_one",
     "sequential_transport_12", "sequential_transport_21",
     "causal_effects_cf", "sim_f"
   )
@@ -1973,8 +2737,10 @@ load("../output/res_sim-gaussian-mc-a1.rda")
 ```{r}
 #| code-fold: true
 #| code-summary: Codes to create the Figure.
-#| fig-cap: Estimated values of $\bar{\delta}(0)$, $\bar{\zeta}(1)$, and $\bar{\tau}$ across 200 Monte Carlo simulations using Causal Mediation (CM), Optimal Transport (OT), and Sequential Transport ST (1) (moving $X_1$ first) and ST (2) (moving $X_2$ first). The red vertical bar denotes the theoretical value.
+#| fig-cap: Estimated values of $\bar{\delta}(0)$, $\bar{\zeta}(1)$, and $\bar{\tau}$ across 200 Monte Carlo simulations using Causal Mediation (CM), Optimal Transport (OT), Entropy Regularized Transports using Sinkhorn (SKH), and Sequential Transport ST (1) (moving $X_1$ first) and ST (2) (moving $X_2$ first). The red vertical bar denotes the theoretical value.
 #| label: fig-gaussian-hist-mc
+#| fig-height: 10
+#| fig-width: 10
 #' @parma metric_name Name of the metric (e.g., "tot_effect_ot")
 #' @param method_label Label of the method (for title, e.g., "OT")
 plot_hist_sim <- function(metric_name, 
@@ -2040,29 +2806,38 @@ plot_hist_sim <- function(metric_name,
 }
 
 
-
-
 export_tikz <- FALSE
 file_name <- "gaussian-hist-mc"
 
 if (export_tikz == TRUE)
   tikz(paste0("figs/", file_name, ".tex"), width = 2.8, height = 2.8)
-par(mar = c(2.1, 2.1, 2.1, .5), mfrow = c(3,4))
-x_lim <- c(0,5)
-plot_hist_sim(metric_name = "delta_0_med", method_label = "CM", x_lim = x_lim, export_tikz = export_tikz)
-plot_hist_sim(metric_name = "delta_0_ot", method_label = "OT", x_lim = x_lim, export_tikz = export_tikz)
-plot_hist_sim(metric_name = "delta_0_sot_12", method_label = "ST (1)", x_lim = x_lim, export_tikz = export_tikz)
-plot_hist_sim(metric_name = "delta_0_sot_21", method_label = "ST (2)", x_lim = x_lim, export_tikz = export_tikz)
-x_lim <- c(-1,5)
-plot_hist_sim(metric_name = "zeta_1_med", method_label = "CM", x_lim = x_lim, export_tikz = export_tikz)
-plot_hist_sim(metric_name = "zeta_1_ot", method_label = "OT", x_lim = x_lim, export_tikz = export_tikz)
-plot_hist_sim(metric_name = "zeta_1_sot_12", method_label = "ST (1)", x_lim = x_lim, export_tikz = export_tikz)
-plot_hist_sim(metric_name = "zeta_1_sot_21", method_label = "ST (2)", x_lim = x_lim, export_tikz = export_tikz)
-x_lim <- c(3,5)
-plot_hist_sim(metric_name = "tot_effect_med", method_label = "CM", x_lim = x_lim, export_tikz = export_tikz)
-plot_hist_sim(metric_name = "tot_effect_ot", method_label = "OT", x_lim = x_lim, export_tikz = export_tikz)
-plot_hist_sim(metric_name = "tot_effect_sot_12", method_label = "ST (1)", x_lim= x_lim, export_tikz = export_tikz)
-plot_hist_sim(metric_name = "tot_effect_sot_21", method_label = "ST (2)", x_lim= x_lim, export_tikz = export_tikz)
+
+par(mar = c(2.1, 2.1, 2.1, .5), mfrow = c(6, 3))
+# CM
+x_lim <- c(0,5); plot_hist_sim(metric_name = "delta_0_med", method_label = "CM", x_lim = x_lim, export_tikz = export_tikz)
+x_lim <- c(-1,5); plot_hist_sim(metric_name = "zeta_1_med", method_label = "CM", x_lim = x_lim, export_tikz = export_tikz)
+x_lim <- c(3,5); plot_hist_sim(metric_name = "tot_effect_med", method_label = "CM", x_lim = x_lim, export_tikz = export_tikz)
+# OT
+x_lim <- c(0,5); plot_hist_sim(metric_name = "delta_0_ot", method_label = "OT", x_lim = x_lim, export_tikz = export_tikz)
+x_lim <- c(-1,5); plot_hist_sim(metric_name = "zeta_1_ot", method_label = "OT", x_lim = x_lim, export_tikz = export_tikz)
+x_lim <- c(3,5); plot_hist_sim(metric_name = "tot_effect_ot", method_label = "OT", x_lim = x_lim, export_tikz = export_tikz)
+# OT-M
+x_lim <- c(0,5); plot_hist_sim(metric_name = "delta_0_tmatch", method_label = "OT-M", x_lim = x_lim, export_tikz = export_tikz)
+x_lim <- c(-1,5); plot_hist_sim(metric_name = "zeta_1_tmatch", method_label = "OT-M", x_lim = x_lim, export_tikz = export_tikz)
+x_lim <- c(3,5); plot_hist_sim(metric_name = "tot_effect_tmatch", method_label = "OT-M", x_lim = x_lim, export_tikz = export_tikz)
+# SKH
+x_lim <- c(0,5); plot_hist_sim(metric_name = "delta_0_skh", method_label = "SKH", x_lim = x_lim, export_tikz = export_tikz)
+x_lim <- c(-1,5); plot_hist_sim(metric_name = "zeta_1_skh", method_label = "SKH", x_lim = x_lim, export_tikz = export_tikz)
+x_lim <- c(3,5); plot_hist_sim(metric_name = "tot_effect_skh", method_label = "SKH", x_lim = x_lim, export_tikz = export_tikz)
+# ST(1)
+x_lim <- c(0,5); plot_hist_sim(metric_name = "delta_0_sot_12", method_label = "ST (1)", x_lim = x_lim, export_tikz = export_tikz)
+x_lim <- c(-1,5); plot_hist_sim(metric_name = "zeta_1_sot_12", method_label = "ST (1)", x_lim = x_lim, export_tikz = export_tikz)
+x_lim <- c(3,5); plot_hist_sim(metric_name = "tot_effect_sot_12", method_label = "ST (1)", x_lim= x_lim, export_tikz = export_tikz)
+# ST(2)
+x_lim <- c(0,5); plot_hist_sim(metric_name = "delta_0_sot_21", method_label = "ST (2)", x_lim = x_lim, export_tikz = export_tikz)
+x_lim <- c(-1,5); plot_hist_sim(metric_name = "zeta_1_sot_21", method_label = "ST (2)", x_lim = x_lim, export_tikz = export_tikz)
+x_lim <- c(3,5); plot_hist_sim(metric_name = "tot_effect_sot_21", method_label = "ST (2)", x_lim= x_lim, export_tikz = export_tikz)
+
 if (export_tikz == TRUE) {
   dev.off()
   plot_to_pdf(filename = file_name, path = "./figs/", keep_tex = FALSE, crop = TRUE)
@@ -2073,24 +2848,35 @@ if (export_tikz == TRUE) {
 ```{r}
 #| code-fold: true
 #| code-summary: Codes to create the Figure.
-#| fig-cap: Estimated values of $\bar{\delta}(1)$, $\bar{\zeta}(0)$, and $\bar{\tau}$ across 200 Monte Carlo simulations using Causal Mediation (CM), Optimal Transport (OT), and Sequential Transport ST (1) (moving $X_1$ first) and ST (2) (moving $X_2$ first). The red vertical bar denotes the theoretical value.
+#| fig-cap: Estimated values of $\bar{\delta}(1)$, $\bar{\zeta}(0)$, and $\bar{\tau}$ across 200 Monte Carlo simulations using Causal Mediation (CM), Optimal Transport (OT), Entropy Regularized Transports using Sinkhorn (SKH), and Sequential Transport ST (1) (moving $X_1$ first) and ST (2) (moving $X_2$ first). The red vertical bar denotes the theoretical value.
 #| label: fig-gaussian-hist-mc-2
-par(mar = c(2.1, 2.1, 2.1, .5), mfrow = c(3,4))
-x_lim <- c(0,5)
-plot_hist_sim(metric_name = "delta_1_med", method_label = "CM", x_lim = x_lim, export_tikz = export_tikz)
-plot_hist_sim(metric_name = "delta_1_ot", method_label = "OT", x_lim = x_lim, export_tikz = export_tikz)
-plot_hist_sim(metric_name = "delta_1_sot_12", method_label = "ST (1)", x_lim = x_lim, export_tikz = export_tikz)
-plot_hist_sim(metric_name = "delta_1_sot_21", method_label = "ST (2)", x_lim = x_lim, export_tikz = export_tikz)
-x_lim <- c(-1,5)
-plot_hist_sim(metric_name = "zeta_0_med", method_label = "CM", x_lim = x_lim, export_tikz = export_tikz)
-plot_hist_sim(metric_name = "zeta_0_ot", method_label = "OT", x_lim = x_lim, export_tikz = export_tikz)
-plot_hist_sim(metric_name = "zeta_0_sot_12", method_label = "ST (1)", x_lim = x_lim, export_tikz = export_tikz)
-plot_hist_sim(metric_name = "zeta_0_sot_21", method_label = "ST (2)", x_lim = x_lim, export_tikz = export_tikz)
-x_lim <- c(3,5)
-plot_hist_sim(metric_name = "tot_effect_med", method_label = "CM", x_lim = x_lim, export_tikz = export_tikz)
-plot_hist_sim(metric_name = "tot_effect_ot", method_label = "OT", x_lim = x_lim, export_tikz = export_tikz)
-plot_hist_sim(metric_name = "tot_effect_sot_12", method_label = "ST (1)", x_lim= x_lim, export_tikz = export_tikz)
-plot_hist_sim(metric_name = "tot_effect_sot_21", method_label = "ST (2)", x_lim= x_lim, export_tikz = export_tikz)
+#| fig-width: 10
+#| fig-height: 10
+par(mar = c(2.1, 2.1, 2.1, .5), mfrow = c(6, 3))
+# CM
+x_lim <- c(0,5); plot_hist_sim(metric_name = "delta_1_med", method_label = "CM", x_lim = x_lim, export_tikz = export_tikz)
+x_lim <- c(-1,5); plot_hist_sim(metric_name = "zeta_0_med", method_label = "CM", x_lim = x_lim, export_tikz = export_tikz)
+x_lim <- c(3,5); plot_hist_sim(metric_name = "tot_effect_med", method_label = "CM", x_lim = x_lim, export_tikz = export_tikz)
+# OT
+x_lim <- c(0,5); plot_hist_sim(metric_name = "delta_1_ot", method_label = "OT", x_lim = x_lim, export_tikz = export_tikz)
+x_lim <- c(-1,5); plot_hist_sim(metric_name = "zeta_0_ot", method_label = "OT", x_lim = x_lim, export_tikz = export_tikz)
+x_lim <- c(3,5); plot_hist_sim(metric_name = "tot_effect_ot", method_label = "OT", x_lim = x_lim, export_tikz = export_tikz)
+# OT-M
+x_lim <- c(0,5); plot_hist_sim(metric_name = "delta_1_tmatch", method_label = "OT-M", x_lim = x_lim, export_tikz = export_tikz)
+x_lim <- c(-1,5); plot_hist_sim(metric_name = "zeta_0_tmatch", method_label = "OT-M", x_lim = x_lim, export_tikz = export_tikz)
+x_lim <- c(3,5); plot_hist_sim(metric_name = "tot_effect_tmatch", method_label = "OT-M", x_lim = x_lim, export_tikz = export_tikz)
+# SKH
+x_lim <- c(0,5); plot_hist_sim(metric_name = "delta_1_skh", method_label = "SKH", x_lim = x_lim, export_tikz = export_tikz)
+x_lim <- c(-1,5); plot_hist_sim(metric_name = "zeta_0_skh", method_label = "SKH", x_lim = x_lim, export_tikz = export_tikz)
+x_lim <- c(3,5); plot_hist_sim(metric_name = "tot_effect_skh", method_label = "SKH", x_lim = x_lim, export_tikz = export_tikz)
+# ST(1)
+x_lim <- c(0,5); plot_hist_sim(metric_name = "delta_1_sot_12", method_label = "ST (1)", x_lim = x_lim, export_tikz = export_tikz)
+x_lim <- c(-1,5); plot_hist_sim(metric_name = "zeta_0_sot_12", method_label = "ST (1)", x_lim = x_lim, export_tikz = export_tikz)
+x_lim <- c(3,5); plot_hist_sim(metric_name = "tot_effect_sot_12", method_label = "ST (1)", x_lim= x_lim, export_tikz = export_tikz)
+# ST(2)
+x_lim <- c(0,5); plot_hist_sim(metric_name = "delta_1_sot_21", method_label = "ST (2)", x_lim = x_lim, export_tikz = export_tikz)
+x_lim <- c(-1,5); plot_hist_sim(metric_name = "zeta_0_sot_21", method_label = "ST (2)", x_lim = x_lim, export_tikz = export_tikz)
+x_lim <- c(3,5); plot_hist_sim(metric_name = "tot_effect_sot_21", method_label = "ST (2)", x_lim= x_lim, export_tikz = export_tikz)
 ```
 
 
@@ -2101,14 +2887,31 @@ is shown in @fig-gaussian-hist-mc-3.
 #| code-summary: Codes to create the Figure.
 #| fig-cap: Estimated values of $\bar{\tau}$ and $\bar{\theta}$ across 200 Monte Carlo simulations using ptimal Transport (OT), and Sequential Transport ST (1) (moving $X_1$ first) and ST (2) (moving $X_2$ first). The red vertical bar denotes the theoretical value.
 #| label: fig-gaussian-hist-mc-3
-par(mar = c(2.1, 2.1, 2.1, .5), mfrow = c(2,3))
+#| fig-width: 10
+#| fig-height: 10
+par(mar = c(2.1, 2.1, 2.1, .5), mfrow = c(6,2))
+x_lim <- c(3,5)
 plot_hist_sim(metric_name = "tot_effect_ot", method_label = "OT", x_lim = x_lim, export_tikz = export_tikz)
-plot_hist_sim(metric_name = "tot_effect_sot_12", method_label = "ST (1)", x_lim= x_lim, export_tikz = export_tikz)
-plot_hist_sim(metric_name = "tot_effect_sot_21", method_label = "ST (2)", x_lim= x_lim, export_tikz = export_tikz)
+plot_hist_sim(metric_name = "tot_effect_tmatch", method_label = "OT-M", x_lim = x_lim, export_tikz = export_tikz)
 
 plot_hist_sim(metric_name = "tot_effect_ot_obs", method_label = "OT", x_lim = x_lim, export_tikz = export_tikz)
-plot_hist_sim(metric_name = "tot_effect_sot_12_obs", method_label = "ST (1)", x_lim= x_lim, export_tikz = export_tikz)
-plot_hist_sim(metric_name = "tot_effect_sot_21_obs", method_label = "ST (2)", x_lim= x_lim, export_tikz = export_tikz)
+plot_hist_sim(metric_name = "tot_effect_tmatch_obs", method_label = "OT-M", x_lim = x_lim, export_tikz = export_tikz)
+
+
+plot_hist_sim(metric_name = "tot_effect_skh", method_label = "SKH", x_lim = x_lim, export_tikz = export_tikz)
+plot_hist_sim(metric_name = "tot_effect_sot_12", method_label = "ST (1)", x_lim = x_lim, export_tikz = export_tikz)
+
+
+plot_hist_sim(metric_name = "tot_effect_skh_obs", method_label = "SKH", x_lim = x_lim, export_tikz = export_tikz)
+plot_hist_sim(metric_name = "tot_effect_sot_12_obs", method_label = "ST (1)", x_lim = x_lim, export_tikz = export_tikz)
+
+
+
+plot_hist_sim(metric_name = "tot_effect_sot_21", method_label = "ST (2)", x_lim = x_lim, export_tikz = export_tikz)
+plot.new()
+
+plot_hist_sim(metric_name = "tot_effect_sot_21_obs", method_label = "ST (2)", x_lim = x_lim, export_tikz = export_tikz)
+plot.new()
 ```
 
 
@@ -2117,19 +2920,22 @@ We also use violin plots, since exporting these histograms in a two-column forma
 ```{r}
 #| code-fold: true
 #| code-summary: Codes to create the Figure.
-#| fig-cap: Estimated values of $\bar{\delta}(0)$, $\bar{\zeta}(1)$, and $\bar{\tau}$ across 200 Monte Carlo simulations using Causal Mediation (CM), Optimal Transport (OT), and Sequential Transport ST (1) (moving $X_1$ first) and ST (2) (moving $X_2$ first). The red vertical bar denotes the theoretical value.
+#| fig-cap: Estimated values of $\bar{\delta}(0)$, $\bar{\zeta}(1)$, and $\bar{\tau}$ across 200 Monte Carlo simulations using Causal Mediation (CM), Optimal Transport (OT), Entropy Regularized Transports using Sinkhorn (SKH), and Sequential Transport ST (1) (moving $X_1$ first) and ST (2) (moving $X_2$ first). The red vertical bar denotes the theoretical value.
 #| label: fig-gaussian-violin-mc
 
-export_pdf <- FALSE
-
-
+export_pdf <- TRUE
 
 p <- ggplot(
   data = res_sim |> 
     select(
-      delta_0_med, delta_0_ot, delta_0_sot_12, delta_0_sot_21,
-      zeta_1_med, zeta_1_ot, zeta_1_sot_12, zeta_1_sot_21,
-      tot_effect_med, tot_effect_ot, tot_effect_sot_12, tot_effect_sot_21
+      delta_0_med, delta_0_ot, delta_0_tmatch, 
+      delta_0_skh, delta_0_sot_12, delta_0_sot_21,
+      #
+      zeta_1_med, zeta_1_ot, zeta_1_tmatch, 
+      zeta_1_skh, zeta_1_sot_12, zeta_1_sot_21,
+      #
+      tot_effect_med, tot_effect_ot, tot_effect_tmatch, 
+      tot_effect_skh, tot_effect_sot_12, tot_effect_sot_21
     ) |> 
     mutate(row = row_number()) |> 
     pivot_longer(cols = -row) |> 
@@ -2149,11 +2955,15 @@ p <- ggplot(
       method = case_when(
         str_detect(name, "_med$") ~ "CM",
         str_detect(name, "_ot$") ~ "OT",
+        str_detect(name, "_tmatch$") ~ "OT-M",
+        str_detect(name, "_skh$") ~ "SKH",
         str_detect(name, "_sot_12$") ~ "ST(1)",
         str_detect(name, "sot_21$") ~ "ST(2)",
         TRUE ~ ""
       ),
-      method = factor(method, levels = rev(c("CM", "OT", "ST(1)", "ST(2)")))
+      method = factor(
+        method, levels = rev(c("CM", "OT", "OT-M", "SKH", "ST(1)", "ST(2)"))
+      )
     )
 ) +
   geom_violin(
@@ -2164,8 +2974,8 @@ p <- ggplot(
 if (export_pdf == TRUE) {
   p <- p + 
     facet_wrap(
-    ~ type, scales = "free_x",
-  )
+      ~ type, scales = "free_x"
+    )
 } else {
   p <- p +
     facet_wrap(
@@ -2198,8 +3008,10 @@ p <- p +
   scale_fill_manual(
     NULL, 
     values = c(
-      "CM" = "gray",
+      "CM" = "#56B4E9",
       "OT" = colour_methods[["OT"]], 
+      "OT-M" = colour_methods[["OT-M"]], 
+      "SKH" = colour_methods[["skh"]], 
       "ST(1)" =  colour_methods[["seq_1"]],
       "ST(2)" =  colour_methods[["seq_2"]]
     ),
@@ -2211,9 +3023,12 @@ p
 
 if (export_pdf == TRUE) {
   ggplot2_to_pdf(
-    plot = p, 
+    plot = p + theme(panel.spacing = unit(0.4, "lines")) +
+      scale_x_continuous(
+        labels = function(x) paste0("$", x, "$")
+      ),
     filename = "gaussian-violin-mc", path = "figs/", 
-    width = 3.3, height = 1.5,
+    width = 3.4, height = 2,
     crop = TRUE
   )
   
