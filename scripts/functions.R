@@ -7,6 +7,8 @@
 #' @param weights_1 Matrix of inter-group distances from group 0 to group 1.
 #' @param num_neighbors_q Number of neighbors to use.
 #' @param method Either `"shortsimplex"`, `"sinkhorn"`, or `"OSQP"`.
+#' @param lambda A regularization parameter (default to 0.1). Only if 
+#'   `method = sinkhorn"`
 #'
 #' @return A vector of counterfactual predicted probabilities.
 compute_counterfactual_probs <- function(i,
@@ -15,7 +17,8 @@ compute_counterfactual_probs <- function(i,
                                          weights_0,
                                          weights_1,
                                          num_neighbors_q,
-                                         method = c("shortsimplex", "sinkhorn", "OSQP")) {
+                                         method = c("shortsimplex", "sinkhorn", "OSQP"),
+                                         lambda = 0.1) {
   
   # Identify closest neighbours within the same group
   dist_neigh_0 <- weights_0[i, , drop = FALSE]
@@ -31,7 +34,8 @@ compute_counterfactual_probs <- function(i,
     Y = pred_probs_1[ranks_weights_1, ],
     wx = dist_neigh_0[ranks_weights_0],
     wy = dist_neigh_1[ranks_weights_1],
-    method = method
+    method = method,
+    lambda = lambda
   )
   
   # Most likely match under the transport plan
@@ -50,16 +54,18 @@ compute_counterfactual_probs <- function(i,
 #' @param num_neighbors_q Number of neigbors to use for categorical variables.
 #'  Default to the min between 50 and the number of observations in the data.
 #' @param method Either `"shortsimplex"`, `"sinkhorn"`, or `"OSQP"`.
+#' @param lambda A regularization parameter (default to 0.1). Only if 
+#'   `method = "sinkhorn"`.
 #' @param cl A cluster object, created by package parallel. If `NULL` (default), 
 #'   no parallel computing is used to transport categorical data.
 #'  
-#' @importFrom transportsimplex wasserstein_simplex
 ot_simplex_probs <- function(pred_probs_0,
                              pred_probs_1,
                              weights_0,
                              weights_1,
                              num_neighbors_q = NULL,
                              method = c("shortsimplex", "sinkhorn", "OSQP"),
+                             lambda = 0.1,
                              cl = NULL) {
   
   method <- match.arg(method)
@@ -93,6 +99,7 @@ ot_simplex_probs <- function(pred_probs_0,
       weights_0 = weights_0,
       weights_1 = weights_1,
       num_neighbors_q = num_neighbors_q,
+      lambda = lambda,
       method = method,
       cl = cl
     )
@@ -105,6 +112,7 @@ ot_simplex_probs <- function(pred_probs_0,
       weights_0 = weights_0,
       weights_1 = weights_1,
       num_neighbors_q = num_neighbors_q,
+      lambda = lambda,
       method = method
     )
     
@@ -185,6 +193,8 @@ get_assignment <- function(probs,
 #' @param num_neighbors_q Number of neigbors to use for categorical variables.
 #'  Default to the min between 50 and the number of observations in the data.
 #' @param method Either `"shortsimplex"`, `"sinkhorn"`, or `"OSQP"`.
+#' @param lambda A regularization parameter (default to 0.1). Only is 
+#'   `method = sinkhorn`.
 #' @param silent If `TRUE`, the messages showing progress in the estimation are
 #'        not shown. Default to `silent=FALSE`.
 #' @param cl A cluster object, created by package parallel. If `NULL` (default), 
@@ -251,6 +261,7 @@ seq_trans <- function(data,
                       num_neighbors = 5,
                       num_neighbors_q = NULL,
                       method = c("shortsimplex", "sinkhorn", "OSQP"),
+                      lambda = 0.1,
                       silent = FALSE,
                       cl = NULL) {
   
@@ -432,6 +443,7 @@ seq_trans <- function(data,
             weights_1 = weights_S1, 
             num_neighbors_q = num_neighbors_q,
             method = method,
+            lambda = lambda,
             cl = cl
           )
           
@@ -542,7 +554,8 @@ seq_trans <- function(data,
           
           mapping <- wasserstein_simplex(
             X = pred_probs_0, Y = pred_probs_1,
-            method = method
+            method = method,
+            lambda = lambda
           )
           pred_probs_0_t <- counterfactual_w(
             mapping = mapping, X0 = pred_probs_0, X1 = pred_probs_1
@@ -692,6 +705,7 @@ wass_lp <- function(dxy,
 #' @param wy Weights (marginal distribution) for Y.
 #' @param p Order of the Wassterstein distance. (If p=2: squared Euclidean
 #'  cost).
+#' @param A regularization parameter (default to 0.1).
 #'
 #' @importFrom T4transport sinkhornD
 #'
@@ -699,12 +713,13 @@ wass_lp <- function(dxy,
 wass_lp_sinkhorn <- function(dxy, 
                              wx, 
                              wy, 
-                             p = 2) {
+                             p = 2,
+                             lambda = 0.1) {
   
   stopifnot(all(abs(sum(wx) - 1) < 1e-8), all(abs(sum(wy) - 1) < 1e-8))
   
   # Compute transport plan via Sinkhorn algorithm
-  gamma <- T4transport::sinkhornD(dxy, p = 2, wx = wx, wy = wy, lambda = 0.1)
+  gamma <- T4transport::sinkhornD(dxy, p = 2, wx = wx, wy = wy, lambda = lambda)
   
   list(distance = gamma$distance, plan = gamma$plan)
 }
@@ -791,6 +806,8 @@ valid_single_marginal <- function(mvec, M, fname) {
 #' @param wy Weights (marginal distribution) for Y. Default to `NULL` (uniform
 #' weights will be used).
 #' @param method Either `"shortsimplex"`, `"sinkhorn"`, or `"OSQP"`.
+#' @param A regularization parameter (default to 0.1). Only if 
+#'   `method = "sinkhorn"`.
 #'
 #' @returns A list with two elements:
 #' * `distance`: the Wassterstein distance
@@ -801,7 +818,8 @@ wasserstein_simplex <- function(X,
                                 Y,
                                 wx = NULL,
                                 wy = NULL,
-                                method = c("shortsimplex", "sinkhorn", "OSQP")) {
+                                method = c("shortsimplex", "sinkhorn", "OSQP"),
+                                lambda = 0.1) {
   
   
   method <- match.arg(method)
@@ -840,7 +858,12 @@ wasserstein_simplex <- function(X,
   } else if (method == "OSQP") {
     return(wass_lp(dxy = dist_mat, wx = par_wx, wy = par_wy, p = 2))
   } else {
-    return(wass_lp_sinkhorn(dxy = dist_mat, wx = par_wx, wy = par_wy, p = 2))
+    return(
+      wass_lp_sinkhorn(
+        dxy = dist_mat, wx = par_wx, wy = par_wy, 
+        p = 2, lambda = lambda
+      )
+    )
   }
   
 }
