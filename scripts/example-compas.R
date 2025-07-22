@@ -125,7 +125,6 @@ for (k in 1:n_folds) {
   )
   mu_treated_model <- randomForest(
     x = tb_train |> 
-      filter(!!sym(S_name) != !!S_untreated) |> select(-!!Y_name, -!!S_name),
     y = tb_train |> filter(!!sym(S_name) != !!S_untreated) |> 
       pull(!!Y_name) |> factor(levels = c(0, 1))
   )
