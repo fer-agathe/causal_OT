@@ -93,27 +93,10 @@ where $\varepsilon \sim \mathcal{N}(0, 1)$ and $a_0 = 3$, $a_1 = 2$, $a_2 = -1.5
 The observed outcome is 
 $$Y = A \cdot Y(1) + (1 - A) \cdot Y(0).$$ 
 
-:::{.callout-note}
-
-### Causal Mediation Effect (@imai2010identification)
-
-The causal mediation effect for the $i$th individual writes:
-
-$$
-\delta_i{(a)} \equiv Y_i{\bigl(a, X_i{(1)}\bigr)} - Y_i{\bigl(a, X_i{(0)}\bigr)}, \quad \text{for } a={0,1},
-$$
-where $Y_i{\bigl(a, X_i{(1)}\bigr)}$ is the potential outcome under treatment $a$ with mediator values $ X_i{(1)}$ and $Y_i{\bigl(a, X_i{(0)}\bigr)}$ is the potential outcome also under treatment $a$ with mediator values $X_i^{(0)}$.
-
-@pearl2001direct refers to $\delta_i{(a)}$ as the natural indirect effect.
-
-:::
-
-
-As noted by @imai2010identification, under treatment status $a$, we only observe $X_i{(a)}$ and we never observe $X_i{(1-a)}$. Using optimal transport, we will build the unobserved value, the counterfactual.
 
 :::{.callout-tip icon=false}
 
-### Here
+### Natural Indirect Effect
 
 Here, with the current DGP, we have:
 $$
@@ -124,23 +107,11 @@ $$
 $$
 :::
 
-:::{.callout-note}
 
-### Average Causal Mediation Effect (ACME) (@imai2010identification)
-
-The average causal mediation effects writes:
-
-$$
-\begin{align*}
-\bar{\delta}{(a)} & \equiv \mathbb{E}\bigl[\delta_i{(a)}\bigr]\\
-& = \mathbb{E}\bigl[ Y_i{(a,X_i{(1)})} - Y_i{(a, X_i{(0)})} \bigr]
-\end{align*}
-$$ {#eq-acme}
-:::
 
 :::{.callout-tip icon=false}
 
-### Here
+### Average Natural Indirect Effect
 
 Here, we have:
 
@@ -153,22 +124,9 @@ $$
 :::
 
 
-:::{.callout-note}
-
-### Natural Direct Effect (@pearl2001direct, @imai2010identification)
-
-The natural direct effect writes:
-$$
-\zeta_i{(a)} = Y_i{(1,X_i{(a)})} - Y_i{(0, X_i{(a)})}, \quad a=0,1.
-$$ {#eq-nde}
-
-Hence, it represents the direct effect of the treatment for a given level of the mediator.
-
-:::
-
 :::{.callout-tip icon=false}
 
-### Here
+### Natural Direct Effect
 
 Here, we have:
 
@@ -182,21 +140,9 @@ $$
 :::
 
 
-:::{.callout-note}
-
-### Total Causal Effect (@imai2010identification)
-
-The total causal effect is given by
-$$
-\tau_i = \delta_i{(a)} +\zeta_i^{(a)} (1-a), \quad a=0,1.
-$$ {#eq-tce}
-
-:::
-
-
 :::{.callout-tip icon=false}
 
-### Here
+### Total Causal Effect
 
 Here, we have:
 
@@ -2923,7 +2869,7 @@ We also use violin plots, since exporting these histograms in a two-column forma
 #| fig-cap: Estimated values of $\bar{\delta}(0)$, $\bar{\zeta}(1)$, and $\bar{\tau}$ across 200 Monte Carlo simulations using Causal Mediation (CM), Optimal Transport (OT), Entropy Regularized Transports using Sinkhorn (SKH), and Sequential Transport ST (1) (moving $X_1$ first) and ST (2) (moving $X_2$ first). The red vertical bar denotes the theoretical value.
 #| label: fig-gaussian-violin-mc
 
-export_pdf <- TRUE
+export_pdf <- FALSE
 
 p <- ggplot(
   data = res_sim |> 
