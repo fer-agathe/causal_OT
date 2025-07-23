@@ -5,9 +5,19 @@
 
 ## Objectives
 
-XXX
+In this page, we illustrate how to divide the simplex $\mathcal{S}_3$ into three regions ($R_A, R_B, R_C$) so that each region contains a prescribed amount of probability mass ($p_A, p_B, p_C$) from a continuous distribution (here, Dirichlet).
+
+In a nutshell, we use optimal transport theory (particularly Brenier's theory) for transporting mass from a continuous distribution to a discrete one (point masses at the triangle's corners).
+
+The method is performed in two steps:
+
+1. Definition of a transport cost: squared distance between points.
+2. Find a map $T$ that moves each point $\boldsymbol{x}$ in the simplex to a vertex $\boldsymbol{u}_i$ (e.g., $(1,0,0)$) while minimizing total transport cost.
 
 
+The map $T$ is defined via Laguerre cells (power diagrams), which are convex regions where each point is closer (in a weighted sense) to one vertex than to the others.
+
+The obtained regions together form a weighted Voronoi diagram on the simplex. Each region has exactly the desired share of the total probability mass: $\int_{R_i} f(\boldsymbol{x}) dx = p_i$.
 
 :::
 
@@ -38,7 +48,6 @@ $$
 \definecolor{wongBlue}{RGB}{0, 114, 178}
 \definecolor{wongOrange}{RGB}{213, 94, 0}
 \definecolor{wongPurple}{RGB}{204, 121, 167}
-
 \definecolor{colGpeZero}{RGB}{127, 23, 14}
 \definecolor{colGpeUn}{RGB}{27, 149, 224}
 $$
@@ -434,6 +443,7 @@ p <- ggtern(
     mutate(
       distrib = factor(
         distrib,
+        levels = c("Uniform", "2_5_3"),
         labels = c(
           "Uniform" = parse(text = latex2exp::TeX("D(1,1,1)")),
           "2_5_3" = parse(text = latex2exp::TeX("$D(2,5,3)$"))
@@ -441,6 +451,7 @@ p <- ggtern(
       ),
       p = factor(
         p,
+        levels = c("(1,1,1)/3", "(3,2,1)/6"),
         labels = c(
           "(1,1,1)/3" = parse(text = latex2exp::TeX("$p=(1,1,1)/3$")),
           "(3,2,1)/6" = parse(text = latex2exp::TeX("$p=(3,2,1)/6$"))
@@ -450,38 +461,40 @@ p <- ggtern(
   mapping = aes(x = A, y = B, z = C)
 ) +
   geom_point(alpha = .8, size = .5, mapping = aes(color = category)) +
-  geom_point(
-    data = samples_unif_unif$tb_intersection |> 
-      mutate(distrib = "Uniform", p = "(1,1,1)/3") |> 
-      bind_rows(
-        samples_unif_p$tb_intersection |> 
-          mutate(distrib = "Uniform", p = "(3,2,1)/6")
-      ) |> 
-      bind_rows(
-        samples_dirichlet_unif$tb_intersection |> 
-          mutate(distrib = "2_5_3", p = "(1,1,1)/3")
-      ) |> 
-      bind_rows(
-        samples_dirichlet_p$tb_intersection |> 
-          mutate(distrib = "2_5_3", p = "(3,2,1)/6")
-      ) |>
-      mutate(
-        distrib = factor(
-          distrib,
-          labels = c(
-            "Uniform" = parse(text = latex2exp::TeX("D(1,1,1)")),
-            "2_5_3" = parse(text = latex2exp::TeX("$D(2,5,3)$"))
-          )
-        ),
-        p = factor(
-          p,
-          labels = c(
-            "(1,1,1)/3" = parse(text = latex2exp::TeX("$p=(1,1,1)/3$")),
-            "(3,2,1)/6" = parse(text = latex2exp::TeX("$p=(3,2,1)/6$"))
-          )
-        )
-      )
-  ) +
+  # geom_point(
+  #   data = samples_unif_unif$tb_intersection |> 
+  #     mutate(distrib = "Uniform", p = "(1,1,1)/3") |> 
+  #     bind_rows(
+  #       samples_unif_p$tb_intersection |> 
+  #         mutate(distrib = "Uniform", p = "(3,2,1)/6")
+  #     ) |> 
+  #     bind_rows(
+  #       samples_dirichlet_unif$tb_intersection |> 
+  #         mutate(distrib = "2_5_3", p = "(1,1,1)/3")
+  #     ) |> 
+  #     bind_rows(
+  #       samples_dirichlet_p$tb_intersection |> 
+  #         mutate(distrib = "2_5_3", p = "(3,2,1)/6")
+  #     ) |>
+  #     mutate(
+  #       distrib = factor(
+  #         distrib,
+  #         levels = c("Uniform", "2_5_3"),
+  #         labels = c(
+  #           "Uniform" = parse(text = latex2exp::TeX("D(1,1,1)")),
+  #           "2_5_3" = parse(text = latex2exp::TeX("$D(2,5,3)$"))
+  #         )
+  #       ),
+  #       p = factor(
+  #         p,
+  #         levels = c("(1,1,1)/3", "(3,2,1)/6"),
+  #         labels = c(
+  #           "(1,1,1)/3" = parse(text = latex2exp::TeX("$p=(1,1,1)/3$")),
+  #           "(3,2,1)/6" = parse(text = latex2exp::TeX("$p=(3,2,1)/6$"))
+  #         )
+  #       )
+  #     )
+  # ) +
   scale_colour_manual(values = col_categ) +
   facet_grid(p ~ distrib, labeller = label_parsed, switch = "y") +
   theme_light(base_size = font_size, base_family = font_family) +
