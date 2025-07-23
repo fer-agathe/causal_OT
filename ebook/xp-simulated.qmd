@@ -22,6 +22,7 @@ library(transportsimplex)
 library(randomForest)
 library(grf)
 library(cluster)
+library(dplyr)
 
 # Also required:
 # install.packages(mlr3fairness)
@@ -55,10 +56,23 @@ $$
 #| code-fold: true
 #| code-summary: Codes for graphical parameters.
 library(extrafont, quietly = TRUE)
+col_group <- c("#00A08A","#F2AD00", "#1b95e0")
+colour_methods <- c(
+    "OT" = "#CC79A7", "OT-M" = "#009E73",
+    "skh" = "darkgray",
+    "seq_1" = "#0072B2", "seq_2" = "#D55E00"
+  )
+colGpe1 <- col_group[2]
+colGpe0 <- col_group[1]
+colGpet <- col_group[3]
+loadfonts(device = "pdf", quiet = TRUE)
+font_size <- 20
 font_family <- "CMU Serif"
 
 path <- "./figs/"
 if (!dir.exists(path)) dir.create(path)
+
+source("../scripts/utils.R")
 ```
 
 We load the functions that will allow us to build the counterfactuals (see [Chapter -@sec-functions]), and some graphical themes for the plots (see [Chapter -@sec-utils):
@@ -240,7 +254,7 @@ tb <- gen_data(2) |>
 #| message: false
 #| warning: false
 ggplot(
-  data = tb |> mutate(A = factor(A)) |> select(A, p, p_cf) |> 
+  data = tb |> mutate(A = factor(A)) |> dplyr::select(A, p, p_cf) |> 
     pivot_longer(cols = c(p, p_cf), names_to = "type", values_to = "p") |> 
     mutate(
       type = factor(type, levels = c("p", "p_cf"), labels = c("Obs.", "Counterfactual")
@@ -254,7 +268,7 @@ ggplot(
   ) +
   facet_wrap(~type) +
   scale_fill_manual(values = c("0" = colours[["0"]], "1" = colours[["1"]])) #+
-  #theme_paper()
+  theme_paper()
 ```
 
 ## Counterfactuals
@@ -300,7 +314,7 @@ Y_name <- "Y" # outcome name
 A_untreated <- 0
 A <- tb[[A_name]]
 ind_untreated <- which(A == A_untreated)
-tb_estim <- tb |> select(A, X1, X2, X3, Y)
+tb_estim <- tb |> dplyr::select(A, X1, X2, X3, Y)
 tb_untreated <- tb_estim[ind_untreated, ]
 tb_treated <- tb_estim[-ind_untreated, ]
 ```
@@ -311,7 +325,7 @@ Let us follow the DAG from @fig-dag and build the counterfactuals of Black indiv
 
 We apply multivariate optimal transport (OT), following the methodology developed in @de2024transport.
 
-```{r}
+```{r, eval=FALSE}
 tb_untreated_wo_A <- tb_untreated[ , !(names(tb_untreated) %in% A_name)]
 tb_treated_wo_A <- tb_treated[ , !(names(tb_treated) %in% A_name)]
 n0 <- nrow(tb_untreated_wo_A)
@@ -324,7 +338,7 @@ X1 <- tb_treated_wo_A[ , !(names(tb_treated_wo_A) %in% Y_name)]
 
 To apply Optimal Transport on the COMPAS dataset, we first need to one-hot the categorical variables.
 
-```{r}
+```{r, eval=FALSE}
 num_cols <- names(X0)[sapply(X0, is.numeric)]
 cat_cols <- names(X0)[sapply(X0, function(col) is.factor(col) || is.character(col))]
 X0_num <- X0[ , num_cols]
@@ -336,18 +350,17 @@ cat_counts <- sapply(X0[ , cat_cols], function(col) length(unique(col)))
 ```
 
 Categorical variables are one-hot encoded:
-```{r}
-library(caret)
+```{r, eval=FALSE}
 X0_cat_encoded <- list()
 X1_cat_encoded <- list()
 for (col in cat_cols) {
   # One-hot encoding with dummyVars
   formula <- as.formula(paste("~", col))
-  dummies <- dummyVars(formula, data = X0_cat)
+  dummies <- caret::dummyVars(formula, data = X0_cat)
   
   # Dummy variable
-  dummy_0 <- predict(dummies, newdata = X0_cat) %>% as.data.frame()
-  dummy_1 <- predict(dummies, newdata = X1_cat) %>% as.data.frame()
+  dummy_0 <- predict(dummies, newdata = X0_cat) |> as.data.frame()
+  dummy_1 <- predict(dummies, newdata = X1_cat) |> as.data.frame()
   
   # Scaling
   dummy_0_scaled <- scale(dummy_0)
@@ -358,24 +371,29 @@ for (col in cat_cols) {
   
   # Aling categories in both treated/untreated groups
   all_cols <- union(colnames(dummy_0_df), colnames(dummy_1_df))
-  dummy_0_df <- dummy_0_df %>% mutate(across(.fns = identity)) %>% select(all_of(all_cols)) %>% replace(is.na(.), 0)
-  dummy_1_df <- dummy_1_df %>% mutate(across(.fns = identity)) %>% select(all_of(all_cols)) %>% replace(is.na(.), 0)
-  
-  # Sauvegarde dans les listes
+  dummy_0_df <- dummy_0_df |>
+    mutate(across(.fns = identity)) |>
+    dplyr::select(all_of(all_cols)) |>
+    mutate(across(everything(), ~replace_na(.x, 0)))
+  dummy_1_df <- dummy_1_df |>
+    mutate(across(.fns = identity)) |>
+    dplyr::select(all_of(all_cols)) |>
+    mutate(across(everything(), ~replace_na(.x, 0)))
+
   X0_cat_encoded[[col]] <- dummy_0_df
   X1_cat_encoded[[col]] <- dummy_1_df
 }
 ```
 We calculate Euclidean distance for numerical variables.
 
-```{r}
+```{r, eval=FALSE}
 # library(proxy)
 num_dist <- proxy::dist(x = X0_num, y = X1_num, method = "Euclidean")
 num_dist <- as.matrix(num_dist)
 ```
 
 For categorical variables, we use the Hamming distance.
-```{r}
+```{r, eval=FALSE}
 cat_dists <- list()
 for (col in cat_cols) {
   mat_0 <- as.matrix(X0_cat_encoded[[col]])
@@ -387,7 +405,7 @@ for (col in cat_cols) {
 
 Then we need to combine the two distance matrices. We use weights equal to the proportion of numerical variables and the proportion of categorical variables, respectively for distances based on numerical and categorical variables.
 
-```{r}
+```{r, eval=FALSE}
 combined_cost <- num_dist
 for (i in seq_along(cat_dists)) {
   combined_cost <- combined_cost + cat_dists[[i]]
@@ -395,7 +413,7 @@ for (i in seq_along(cat_dists)) {
 ```
 
 Then, we can compute the transport map:
-```{r}
+```{r, eval=FALSE}
 # Uniform weights (equal mass)
 w0 <- rep(1 / n0, n0)
 w1 <- rep(1 / n1, n1)
@@ -414,12 +432,12 @@ for(i in seq_len(nrow(transport_res))) {
 ```
 
 We first transport the numerical variables.
-```{r}
+```{r, eval=FALSE}
 num_transported <- n0 * (transport_plan %*% as.matrix(X1_num))
 ```
 
 Then, we transport the categorical variables with label reconstruction (not perfect here).
-```{r}
+```{r, eval=FALSE}
 cat_transported <- list()
 for (col in cat_cols) {
   cat_probs <- transport_plan %*% as.matrix(X1_cat_encoded[[col]])
@@ -432,7 +450,7 @@ for (col in cat_cols) {
 ```
 
 We can now store the results into a tibble.
-```{r}
+```{r, eval=FALSE}
 tb_ot_transported <- as_tibble(num_transported)
 for (col in cat_cols) {
   tb_ot_transported[[col]] <- cat_transported[[col]]
@@ -449,10 +467,12 @@ tb_ot_transported <- tb_ot_transported |>
 tb_ot_transported <- as.list(tb_ot_transported)
 ```
 
+We can also use the function `optimal_transport_cf()`{.R} with default parameters (i.e., without any regularization).
+
 ### Penalized Optimal Transport
 
 We can directly compute the transport map using Sinkhorn penalty.
-```{r}
+```{r, eval=FALSE}
 # Compute transport plan
 sinkhorn_transport_res <- T4transport::sinkhornD(
   combined_cost, wx = w0, wy = w1, lambda = 0.1
@@ -462,12 +482,12 @@ sinkhorn_transport_plan <- sinkhorn_transport_res$plan
 ```
 
 We first transport the numerical variables.
-```{r}
+```{r, eval=FALSE}
 num_sinkhorn_transported <- n0 * (sinkhorn_transport_plan %*% as.matrix(X1_num))
 ```
 
 Then, we transport the categorical variables with label reconstruction (not perfect here).
-```{r}
+```{r, eval=FALSE}
 cat_sinkhorn_transported <- list()
 for (col in cat_cols) {
   cat_probs <- sinkhorn_transport_plan %*% as.matrix(X1_cat_encoded[[col]])
@@ -480,7 +500,7 @@ for (col in cat_cols) {
 ```
 
 We can now store the results into a tibble.
-```{r}
+```{r, eval=FALSE}
 tb_sinkhorn_transported <- as_tibble(num_sinkhorn_transported)
 for (col in cat_cols) {
   tb_sinkhorn_transported[[col]] <- cat_sinkhorn_transported[[col]]
@@ -496,6 +516,8 @@ tb_sinkhorn_transported <- tb_sinkhorn_transported |>
   mutate(X3 = as.factor(X3))
 tb_sinkhorn_transported <- as.list(tb_sinkhorn_transported)
 ```
+
+We can also use the function `optimal_transport_cf()`{.R} but this time we need to indicate a value for the parameter `pen` to apply Sinkhorn regularization.
 
 ### Sequential Transport
 
@@ -904,7 +926,7 @@ We can have a look at the `r colorize("transported values", colours[["transp"]])
 library(ggtern)
 i <- 1
 ggtern(
-  data = gen_data(i) |> select(A, X3_p_A,X3_p_B, X3_p_C) |> 
+  data = gen_data(i) |> dplyr::select(A, X3_p_A,X3_p_B, X3_p_C) |> 
     mutate(A = as.character(A)) |> 
     bind_rows(
       as_tibble(res_simul_seq_trans[[i]]$transported_prob$X3) |> 
@@ -952,6 +974,8 @@ causal_effects <- list_rbind(res_simul_effects)
 #| fig-cap: !expr glue::glue("Causal effects, {n} replications.", n = length(seeds))
 #| label: fig-simul-mc-causal-effects
 library(stringr)
+export_pdf <- TRUE
+
 data_plot <- causal_effects |> 
   pivot_longer(
     cols = -seed, 
@@ -982,36 +1006,63 @@ data_plot <- causal_effects |>
     Method = factor(
       Method,
       levels = c(
-        "causal_med", "seq_ot", "sink_ot", "ot"
+        "seq_ot", "sink_ot", "ot", "causal_med"
       ),
-      labels = c("Causal Med.", "Seq. OT", "Reg. OT", "OT")
+      labels = c("ST", "SKH", "OT", "CM")
     )
   )
-ggplot(
+p <- ggplot(
   data = data_plot,
   mapping = aes(x = tau, y = Method)
 ) +
-  geom_violin(
-    mapping = aes(fill = Method),
-    draw_quantiles = c(0.25, 0.5, 0.75)
-  ) +
-  geom_hline(yintercept = 0, colour = "darkred", linetype = "dashed") +
-  theme_paper() +
-  facet_wrap(
-    ~type, nrow = 1,
-    labeller = as_labeller(latex2exp::TeX, default = label_parsed)
-  ) +
-  scale_fill_manual(
-    NULL,
-    values = c(
-      "Causal Med." = "#E69F00",
-      "OT" = "pink",
-      "Reg. OT" = "lightblue",
-      "Seq. OT" = "#009E73"
+geom_violin(
+    #mapping = aes(x = value, y = method, fill = method),
+mapping = aes(fill = Method),
+    draw_quantiles = c(.25, .5, .75)) +
+  labs(x = NULL, y = NULL)
+
+if (export_pdf == TRUE) {
+  p <- p + 
+    facet_wrap(
+      ~ type, scales = "free_x"
     )
+} else {
+  p <- p +
+    facet_wrap(
+      ~ type, scales = "free_x",
+      labeller = as_labeller(latex2exp::TeX, default = label_parsed)
+    )
+}
+
+p <- p +
+  scale_fill_manual(
+    NULL, 
+    values = c(
+      "CM" = "#56B4E9",
+      "OT" = colour_methods[["OT"]], 
+      "SKH" = colour_methods[["skh"]], 
+      "ST" =  colour_methods[["seq_1"]]
+    ),
+    guide = "none"
   ) +
-  labs(y = NULL, x = latex2exp::TeX("$\\tau$")) +
-  theme(legend.position = "bottom") # axis.text.y = element_blank()
+  theme_paper()
+
+p
+
+if (export_pdf == TRUE) {
+  ggplot2_to_pdf(
+    plot = p + theme(panel.spacing = unit(0.4, "lines")) +
+      scale_x_continuous(
+        labels = function(x) paste0("$", x, "$"),
+        breaks = scales::pretty_breaks(n = 3)
+      ),
+    filename = "xp-simulated-violin-mc", path = "figs/", 
+    width = 3.4, height = 1.333,
+    crop = TRUE
+  )
+  
+  system(paste0("pdfcrop figs/xp-simulated-violin-mc.pdf figs/xp-simulated-violin-mc.pdf"))
+}
 ```
 
 
