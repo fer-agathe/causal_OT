@@ -931,3 +931,134 @@ causal_effects_cf <- function(data_untreated,
     tot_effect = tot_effect
   )
 }
+
+#' Empirical and Multivariate Optimal Transport.
+#' 
+#' @param data Dataset with all units (treated and untreated).
+#' @param Y_name Name of the column with the outcome variable.
+#' @param A_name Name of the column with the treatment variable.
+#' @param A_untreated Value of the treatment for the untreated units.
+#' @param pen Value of the Sinkhorn regularization parameter. 
+#' If `NULL` (default value), classical Optimal Transport algorithm is applied.
+#' 
+#' @returns A tibble:
+#' `data_transported`: it contains the transported mediator variables for the 
+#' untreated group.
+#'
+#' @importFrom dplyr mutate select across replace
+#' @importFrom stats predict
+#' @md
+optimal_transport_cf <- function(data,
+                                 Y_name,
+                                 A_name,
+                                 A_untreated,
+                                 pen = NULL) {
+  # Settings to apply Optimal Transport
+  A <- data[[A_name]]
+  ind_untreated <- which(A == A_untreated)
+  data_untreated <- data[ind_untreated, ]
+  data_treated <- data[-ind_untreated, ]
+  data_untreated_wo_A <- data_untreated[ , !(names(data_untreated) %in% A_name)]
+  data_treated_wo_A <- data_treated[ , !(names(data_treated) %in% A_name)]
+  n0 <- nrow(data_untreated_wo_A)
+  n1 <- nrow(data_treated_wo_A)
+  X0 <- data_untreated_wo_A[ , !(names(data_untreated_wo_A) %in% Y_name)]
+  X1 <- data_treated_wo_A[ , !(names(data_treated_wo_A) %in% Y_name)]
+  
+  # One-hot categorical variables
+  num_cols <- names(X0)[sapply(X0, is.numeric)]
+  cat_cols <- names(X0)[sapply(X0, function(col) is.factor(col) || is.character(col))]
+  X0_num <- X0[ , num_cols]
+  X1_num <- X1[ , num_cols]
+  X0_cat <- X0[ , cat_cols]
+  X1_cat <- X1[ , cat_cols]
+  cat_counts <- sapply(X0[ , cat_cols], function(col) length(unique(col)))
+  X0_cat_encoded <- list()
+  X1_cat_encoded <- list()
+  for (col in cat_cols) {
+    # One-hot encoding with dummyVars
+    formula <- as.formula(paste("~", col))
+    dummies <- caret::dummyVars(formula, data = X0_cat)
+    
+    # Dummy variable
+    dummy_0 <- predict(dummies, newdata = X0_cat) %>% as.data.frame()
+    dummy_1 <- predict(dummies, newdata = X1_cat) %>% as.data.frame()
+    
+    # Scaling
+    dummy_0_scaled <- scale(dummy_0)
+    dummy_1_scaled <- scale(dummy_1)
+    
+    dummy_0_df <- as.data.frame(dummy_0_scaled)
+    dummy_1_df <- as.data.frame(dummy_1_scaled)
+    
+    # Aling categories in both treated/untreated groups
+    all_cols <- union(colnames(dummy_0_df), colnames(dummy_1_df))
+    dummy_0_df <- dummy_0_df %>% mutate(across(.fns = identity)) %>% select(all_of(all_cols)) %>% replace(is.na(.), 0)
+    dummy_1_df <- dummy_1_df %>% mutate(across(.fns = identity)) %>% select(all_of(all_cols)) %>% replace(is.na(.), 0)
+    
+    # Sauvegarde dans les listes
+    X0_cat_encoded[[col]] <- dummy_0_df
+    X1_cat_encoded[[col]] <- dummy_1_df
+  }
+  
+  # Calculate Euclidean and Hamming distances for both numeric and categorical variables
+  num_dist <- proxy::dist(x = X0_num, y = X1_num, method = "Euclidean")
+  num_dist <- as.matrix(num_dist)
+  
+  cat_dists <- list()
+  for (col in cat_cols) {
+    mat_0 <- as.matrix(X0_cat_encoded[[col]])
+    mat_1 <- as.matrix(X1_cat_encoded[[col]])
+    dist_mat <- proxy::dist(x = mat_0, y = mat_1, method = "Euclidean")
+    cat_dists[[col]] <- as.matrix(dist_mat)
+  }
+  
+  # Final cost matrix for OT optim. problem
+  combined_cost <- num_dist
+  for (i in seq_along(cat_dists)) {
+    combined_cost <- combined_cost + cat_dists[[i]]
+  }
+  
+  # Uniform weights (equal mass)
+  w0 <- rep(1 / n0, n0)
+  w1 <- rep(1 / n1, n1)
+  # Compute transport plan
+  
+  if (is.null(pen)) {
+    transport_res <- transport::transport(
+      a = w0,
+      b = w1,
+      costm = combined_cost,
+      method = "shortsimplex"
+    )
+    
+    transport_plan <- matrix(0, nrow = n0, ncol = n1)
+    for(i in seq_len(nrow(transport_res))) {
+      transport_plan[transport_res$from[i], transport_res$to[i]] <- transport_res$mass[i]
+    }
+  } else {
+    transport_res <- T4transport::sinkhornD(
+      combined_cost, wx = w0, wy = w1, lambda = pen
+    )
+    transport_plan <- transport_res$plan
+  }
+  
+  # Transport the numerical variables
+  num_transported <- n0 * (transport_plan %*% as.matrix(X1_num))
+  # Transport the categorical variables
+  cat_transported <- list()
+  for (col in cat_cols) {
+    cat_probs <- transport_plan %*% as.matrix(X1_cat_encoded[[col]])
+    cat_encoded_columns <- colnames(X1_cat_encoded[[col]])
+    # For each obs., we take the index with the maximum value (approx. proba)
+    max_indices <- apply(cat_probs, 1, which.max)
+    prefix_pattern <- paste0("^", col, "\\.")
+    cat_transported[[col]] <- sapply(max_indices, function(x) sub(prefix_pattern, "", cat_encoded_columns[x]))
+  }
+  data_transported <- as_tibble(num_transported)
+  for (col in cat_cols) {
+    data_transported[[col]] <- cat_transported[[col]]
+  }
+  
+  data_transported
+}

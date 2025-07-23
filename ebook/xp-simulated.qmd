@@ -253,8 +253,8 @@ ggplot(
     position = "identity", bins = 30
   ) +
   facet_wrap(~type) +
-  scale_fill_manual(values = c("0" = colours[["0"]], "1" = colours[["1"]])) +
-  theme_paper()
+  scale_fill_manual(values = c("0" = colours[["0"]], "1" = colours[["1"]])) #+
+  #theme_paper()
 ```
 
 ## Counterfactuals
@@ -298,9 +298,206 @@ We call the `seq_trans()`{.R} function (see [Chapter -@sec-functions]) function 
 A_name <- "A" # treatment name
 Y_name <- "Y" # outcome name
 A_untreated <- 0
+A <- tb[[A_name]]
+ind_untreated <- which(A == A_untreated)
+tb_estim <- tb |> select(A, X1, X2, X3, Y)
+tb_untreated <- tb_estim[ind_untreated, ]
+tb_treated <- tb_estim[-ind_untreated, ]
 ```
 
+Let us follow the DAG from @fig-dag and build the counterfactuals of Black individuals: we thus transport individuals from $A=0$ to $A=1$, using the predictions on the test set.
 
+### Multivariate Optimal Transport
+
+We apply multivariate optimal transport (OT), following the methodology developed in @de2024transport.
+
+```{r}
+tb_untreated_wo_A <- tb_untreated[ , !(names(tb_untreated) %in% A_name)]
+tb_treated_wo_A <- tb_treated[ , !(names(tb_treated) %in% A_name)]
+n0 <- nrow(tb_untreated_wo_A)
+n1 <- nrow(tb_treated_wo_A)
+y0 <- tb_untreated_wo_A[[Y_name]]
+y1 <- tb_treated_wo_A[[Y_name]]
+X0 <- tb_untreated_wo_A[ , !(names(tb_untreated_wo_A) %in% Y_name)]
+X1 <- tb_treated_wo_A[ , !(names(tb_treated_wo_A) %in% Y_name)]
+```
+
+To apply Optimal Transport on the COMPAS dataset, we first need to one-hot the categorical variables.
+
+```{r}
+num_cols <- names(X0)[sapply(X0, is.numeric)]
+cat_cols <- names(X0)[sapply(X0, function(col) is.factor(col) || is.character(col))]
+X0_num <- X0[ , num_cols]
+X1_num <- X1[ , num_cols]
+X0_cat <- X0[ , cat_cols]
+X1_cat <- X1[ , cat_cols]
+
+cat_counts <- sapply(X0[ , cat_cols], function(col) length(unique(col)))
+```
+
+Categorical variables are one-hot encoded:
+```{r}
+library(caret)
+X0_cat_encoded <- list()
+X1_cat_encoded <- list()
+for (col in cat_cols) {
+  # One-hot encoding with dummyVars
+  formula <- as.formula(paste("~", col))
+  dummies <- dummyVars(formula, data = X0_cat)
+  
+  # Dummy variable
+  dummy_0 <- predict(dummies, newdata = X0_cat) %>% as.data.frame()
+  dummy_1 <- predict(dummies, newdata = X1_cat) %>% as.data.frame()
+  
+  # Scaling
+  dummy_0_scaled <- scale(dummy_0)
+  dummy_1_scaled <- scale(dummy_1)
+
+  dummy_0_df <- as.data.frame(dummy_0_scaled)
+  dummy_1_df <- as.data.frame(dummy_1_scaled)
+  
+  # Aling categories in both treated/untreated groups
+  all_cols <- union(colnames(dummy_0_df), colnames(dummy_1_df))
+  dummy_0_df <- dummy_0_df %>% mutate(across(.fns = identity)) %>% select(all_of(all_cols)) %>% replace(is.na(.), 0)
+  dummy_1_df <- dummy_1_df %>% mutate(across(.fns = identity)) %>% select(all_of(all_cols)) %>% replace(is.na(.), 0)
+  
+  # Sauvegarde dans les listes
+  X0_cat_encoded[[col]] <- dummy_0_df
+  X1_cat_encoded[[col]] <- dummy_1_df
+}
+```
+We calculate Euclidean distance for numerical variables.
+
+```{r}
+# library(proxy)
+num_dist <- proxy::dist(x = X0_num, y = X1_num, method = "Euclidean")
+num_dist <- as.matrix(num_dist)
+```
+
+For categorical variables, we use the Hamming distance.
+```{r}
+cat_dists <- list()
+for (col in cat_cols) {
+  mat_0 <- as.matrix(X0_cat_encoded[[col]])
+  mat_1 <- as.matrix(X1_cat_encoded[[col]])
+  dist_mat <- proxy::dist(x = mat_0, y = mat_1, method = "Euclidean")
+  cat_dists[[col]] <- as.matrix(dist_mat)
+}
+```
+
+Then we need to combine the two distance matrices. We use weights equal to the proportion of numerical variables and the proportion of categorical variables, respectively for distances based on numerical and categorical variables.
+
+```{r}
+combined_cost <- num_dist
+for (i in seq_along(cat_dists)) {
+  combined_cost <- combined_cost + cat_dists[[i]]
+}
+```
+
+Then, we can compute the transport map:
+```{r}
+# Uniform weights (equal mass)
+w0 <- rep(1 / n0, n0)
+w1 <- rep(1 / n1, n1)
+# Compute transport plan
+transport_res <- transport::transport(
+  a = w0,
+  b = w1,
+  costm = combined_cost,
+  method = "shortsimplex"
+)
+
+transport_plan <- matrix(0, nrow = n0, ncol = n1)
+for(i in seq_len(nrow(transport_res))) {
+  transport_plan[transport_res$from[i], transport_res$to[i]] <- transport_res$mass[i]
+}
+```
+
+We first transport the numerical variables.
+```{r}
+num_transported <- n0 * (transport_plan %*% as.matrix(X1_num))
+```
+
+Then, we transport the categorical variables with label reconstruction (not perfect here).
+```{r}
+cat_transported <- list()
+for (col in cat_cols) {
+  cat_probs <- transport_plan %*% as.matrix(X1_cat_encoded[[col]])
+  cat_encoded_columns <- colnames(X1_cat_encoded[[col]])
+  # For each obs., we take the index with the maximum value (approx. proba)
+  max_indices <- apply(cat_probs, 1, which.max)
+  prefix_pattern <- paste0("^", col, "\\.")
+  cat_transported[[col]] <- sapply(max_indices, function(x) sub(prefix_pattern, "", cat_encoded_columns[x]))
+}
+```
+
+We can now store the results into a tibble.
+```{r}
+tb_ot_transported <- as_tibble(num_transported)
+for (col in cat_cols) {
+  tb_ot_transported[[col]] <- cat_transported[[col]]
+}
+
+save(tb_ot_transported, file = "../output/ot-synthetic.rda")
+```
+
+```{r}
+# Load tb_ot_transported
+load("../output/ot-synthetic.rda")
+tb_ot_transported <- tb_ot_transported |>
+  mutate(X3 = as.factor(X3))
+tb_ot_transported <- as.list(tb_ot_transported)
+```
+
+### Penalized Optimal Transport
+
+We can directly compute the transport map using Sinkhorn penalty.
+```{r}
+# Compute transport plan
+sinkhorn_transport_res <- T4transport::sinkhornD(
+  combined_cost, wx = w0, wy = w1, lambda = 0.1
+  )
+
+sinkhorn_transport_plan <- sinkhorn_transport_res$plan
+```
+
+We first transport the numerical variables.
+```{r}
+num_sinkhorn_transported <- n0 * (sinkhorn_transport_plan %*% as.matrix(X1_num))
+```
+
+Then, we transport the categorical variables with label reconstruction (not perfect here).
+```{r}
+cat_sinkhorn_transported <- list()
+for (col in cat_cols) {
+  cat_probs <- sinkhorn_transport_plan %*% as.matrix(X1_cat_encoded[[col]])
+  cat_encoded_columns <- colnames(X1_cat_encoded[[col]])
+  # For each obs., we take the index with the maximum value (approx. proba)
+  max_indices <- apply(cat_probs, 1, which.max)
+  prefix_pattern <- paste0("^", col, "\\.")
+  cat_sinkhorn_transported[[col]] <- sapply(max_indices, function(x) sub(prefix_pattern, "", cat_encoded_columns[x]))
+}
+```
+
+We can now store the results into a tibble.
+```{r}
+tb_sinkhorn_transported <- as_tibble(num_sinkhorn_transported)
+for (col in cat_cols) {
+  tb_sinkhorn_transported[[col]] <- cat_sinkhorn_transported[[col]]
+}
+
+save(tb_sinkhorn_transported, file = "../output/sinkhorn-synthetic.rda")
+```
+
+```{r}
+# Load tb_sinkhorn_transported
+load("../output/sinkhorn-synthetic.rda")
+tb_sinkhorn_transported <- tb_sinkhorn_transported |>
+  mutate(X3 = as.factor(X3))
+tb_sinkhorn_transported <- as.list(tb_sinkhorn_transported)
+```
+
+### Sequential Transport
 
 ```{r define-sequential_transport, eval=FALSE}
 # The estimation takes about 16 secondes to run.
@@ -317,7 +514,7 @@ clusterEvalQ(cl, {
   invisible()
 
 sequential_transport <- seq_trans(
-  data = tb, 
+  data = tb_estim, 
   adj = adj, 
   s = A_name, 
   S_0 = 0, # source: untreated
@@ -329,59 +526,107 @@ sequential_transport <- seq_trans(
   cl = cl
 )
 
-save(sequential_transport, file = "../output/res_simul-seq-t.rda")
+save(sequential_transport, file = "../output/seq-t-synthetic.rda")
 
 stopCluster(cl)
 ```
 
 Let us load the results of the estimation:
 ```{r load-sequential_transport}
-load("../output/res_simul-seq-t.rda")
+load("../output/seq-t-synthetic.rda")
 ```
 
 ## Measuring the Causal Effect
 
-```{r define-tb_estim}
-tb_estim <- tb |> select(Y, A, X1, X2, X3)
-A_name <- "A"
-A_untreated <- 0
-Y_name <- "Y"
-```
-
-
 ### With Causal Mediation Analysis
 
-Let us use the `multimed()`{.R} function from {mediation} to estimate:
-
-- $\bar{\delta}(0)$: the average causal mediation effect for $a=0$,
-- $\bar{\zeta}(1)$: the average direct effect for $a=1$,
-- $\bar{\tau} = \bar{\delta}(0) + \bar{\zeta}(1)$: the total causal effect.
+Let us use the `multimed()`{.R} function from {mediation} to estimate the direct effect:
+- A -> Y,
+and the different indirect effects:
+- A -> X1 -> Y,
+- A -> X2 -> Y,
+- A -> X3 -> Y,
+- A -> X1 -> X2 -> Y,
+- A -> X1 -> X3 -> Y,
+- A -> X2 -> X3 -> Y,
+- A -> X1 -> X2 -> X3 -> Y.
 
 ```{r estim-causal-effect-mediation}
 #| message: false
 #| warning: false
 # library(mediation) # we do not load it
 #  otherwise it masks a lot of useful functions
-med_mod <- mediation::multimed(
+
+# We encode the categorical variable as for optimal transport
+tb_med <- tb_estim |> 
+  mutate(
+    X3 = case_when(
+      X3 == "A" ~ 0,
+      X3 == "B" ~ 1,
+      X3 == "C" ~ 2
+    )
+  )
+
+med_mod_X1 <- mediation::multimed(
   outcome = "Y", 
   med.main = "X1", 
-  med.alt = c("X2", "X3"),
+  med.alt = c("X2", "X3"), 
   treat = "A", 
-  data = tb_estim
+  data = tb_med
 )
+# Indirect effect for X1: A -> X1 -> Y
+delta_0_med_X1 <- mean((med_mod_X1$d0.lb + med_mod_X1$d0.ub) / 2)
+# Direct + Other indirect effects: A -> Y, A -> X2 -> Y, A -> X3 -> Y, 
+# A -> X1 -> X2 -> Y, A -> X2 -> X3 -> Y, A -> X1 -> X3 -> Y, A -> X1 -> X2 -> X3 -> Y
+zeta_1_med_X1 <- mean((med_mod_X1$z1.lb + med_mod_X1$z1.ub) / 2)
+# Total effect
+tot_effect_med_X1 <- delta_0_med_X1 + zeta_1_med_X1
 
-delta_0_med <- mean((med_mod$d0.lb + med_mod$d0.ub) / 2)
-zeta_1_med <- mean((med_mod$z1.lb + med_mod$z1.ub) / 2)
-tot_effect_med <- delta_0_med + zeta_1_med
+med_mod_X2 <- mediation::multimed(
+  outcome = "Y", 
+  med.main = "X2", 
+  med.alt = c("X1", "X3"), 
+  treat = "A", 
+  data = tb_med
+)
+# Indirect effect for X2: A -> X2 -> Y, A -> X1 -> X2 -> Y
+delta_0_med_X2 <- mean((med_mod_X2$d0.lb + med_mod_X2$d0.ub) / 2)
+# Direct + Other indirect effects: A -> Y, A -> X1 -> Y, A -> X3 -> Y, 
+# A -> X1 -> X3 -> Y, A -> X2 -> X3 -> Y, A -> X1 -> X2 -> X3
+zeta_1_med_X2 <- mean((med_mod_X2$z1.lb + med_mod_X2$z1.ub) / 2)
+# Total effect
+tot_effect_med_X2 <- delta_0_med_X2 + zeta_1_med_X2
+
+med_mod_X3 <- mediation::multimed(
+  outcome = "Y", 
+  med.main = "X3", 
+  med.alt = c("X1", "X2"), 
+  treat = "A", 
+  data = tb_med
+)
+# Indirect effect for ccd: A -> X3 -> Y, A -> X1 -> X3 -> Y, A -> X2 -> X3 -> Y,
+# A -> X1 -> X2 -> X3 -> Y
+delta_0_med_X3 <- mean((med_mod_X3$d0.lb + med_mod_X3$d0.ub) / 2)
+# Direct + Other indirect effects: A -> Y, A -> X1 -> Y, A -> X2 -> Y, 
+# A -> X1 -> X2 -> Y
+zeta_1_med_X3 <- mean((med_mod_X3$z1.lb + med_mod_X3$z1.ub) / 2)
+# Total effect
+tot_effect_med_X3 <- delta_0_med_X3 + zeta_1_med_X3
 ```
 
 The estimated values:
 
 ```{r show-estim-mediation}
+# Total effect
+tot_effect_med <- tot_effect_med_X1
+# Indirect effects
+delta_0_med <- delta_0_med_X1 + delta_0_med_X2 + delta_0_med_X3
+# Direct effect 
+zeta_1_med <- tot_effect_med - delta_0_med
 cbind(delta_0 = delta_0_med, zeta_1 = zeta_1_med, tot_effect = tot_effect_med)
 ```
 
-### With Sequential Optimal Transport
+### With Optimal Transport
 
 ```{r library-randomForest}
 #| message: false
@@ -394,10 +639,52 @@ We use a random forest to estimate the outcome model (see `causal_effects_cf()`{
 ```{r}
 #| warning: false
 #| message: false
-tb_untreated <- tb_estim |> filter(!!sym(A_name) == !!A_untreated)
-tb_treated <- tb_estim |> filter(!!sym(A_name) != !!A_untreated)
 
-causal_effects_sot <- causal_effects_cf(
+causal_effects_ot <- causal_effects_cf(
+  data_untreated = tb_untreated, 
+  data_treated = tb_treated,
+  data_cf = as_tibble(tb_ot_transported), 
+  Y_name = Y_name, 
+  A_name = A_name, 
+  A_untreated = A_untreated # 0
+)
+
+cbind(
+  delta_0 = causal_effects_ot$delta_0,
+  zeta_1 = causal_effects_ot$zeta_1, 
+  tot_effect = causal_effects_ot$tot_effect
+)
+```
+
+### With Penalized Optimal Transport
+
+```{r}
+#| warning: false
+#| message: false
+
+causal_effects_ot <- causal_effects_cf(
+  data_untreated = tb_untreated, 
+  data_treated = tb_treated,
+  data_cf = as_tibble(tb_sinkhorn_transported), 
+  Y_name = Y_name, 
+  A_name = A_name, 
+  A_untreated = A_untreated # 0
+)
+
+cbind(
+  delta_0 = causal_effects_ot$delta_0,
+  zeta_1 = causal_effects_ot$zeta_1, 
+  tot_effect = causal_effects_ot$tot_effect
+)
+```
+
+### With Sequential Transport
+
+```{r}
+#| warning: false
+#| message: false
+
+causal_effects_st <- causal_effects_cf(
   data_untreated = tb_untreated, 
   data_treated = tb_treated,
   data_cf = as_tibble(sequential_transport$transported), 
@@ -407,20 +694,22 @@ causal_effects_sot <- causal_effects_cf(
 )
 
 cbind(
-  delta_0 = causal_effects_sot$delta_0,
-  zeta_1 = causal_effects_sot$zeta_1, 
-  tot_effect = causal_effects_sot$tot_effect
+  delta_0 = causal_effects_st$delta_0,
+  zeta_1 = causal_effects_st$zeta_1, 
+  tot_effect = causal_effects_st$tot_effect
 )
 ```
 
 ## Monte-Carlo Experiment
 
-We run Monte-Carlo simulations to reproduce the previous steps. In each of the 200 iteration, we draw some data according to the DGP presented in @sec-dgp. Then, we use the `seq_trans()`{.R} function (see [Chapter -@sec-functions]) to perform sequential conditional transport to transport individuals from the `r colorize("untreated group", colours[["0"]])` ($A=0$) to the `r colorize("treated group", colours[["1"]])` ($A=1$).
+We run Monte-Carlo simulations to reproduce the previous steps. In each of the 200 iteration, we draw some data according to the DGP presented in @sec-dgp. Then, we use the `seq_trans()`{.R} function (see [Chapter -@sec-functions]) to perform sequential conditional transport to transport individuals from the `r colorize("untreated group", colours[["0"]])` ($A=0$) to the `r colorize("treated group", colours[["1"]])` ($A=1$). We also use OT and penalized OT.
 
 We set the seeds for each replication and we define placeholders.
-```{r define-res_ATT}
+```{r define-res}
 seeds <- 1:200
-res_simul_transp <- vector(mode = "list", length = length(seeds))
+res_simul_opt_trans <- vector(mode = "list", length = length(seeds))
+res_simul_sink_trans <- vector(mode = "list", length = length(seeds))
+res_simul_seq_trans <- vector(mode = "list", length = length(seeds))
 res_simul_effects <- vector(mode = "list", length = length(seeds))
 ```
 
@@ -449,6 +738,30 @@ for (i in 1:length(seeds)) {
   A_untreated <- 0
   Y_name <- "Y"
   
+  # Optimal Transport
+  tb_ot_transported <- optimal_transport_cf(tb,
+                                            Y_name,
+                                            A_name,
+                                            A_untreated
+                                            )
+  tb_ot_transported <- tb_ot_transported |>
+    mutate(X3 = as.factor(X3))
+  tb_ot_transported <- as.list(tb_ot_transported)
+  res_simul_opt_trans[[i]] <- tb_ot_transported
+
+  # Penalized (0.1) Optimal Transport with Sinkhorn
+  tb_sinkhorn_transported <- optimal_transport_cf(tb,
+                                                  Y_name,
+                                                  A_name,
+                                                  A_untreated,
+                                                  pen = 0.1
+                                                  )
+  tb_sinkhorn_transported <- tb_sinkhorn_transported |>
+    mutate(X3 = as.factor(X3))
+  tb_sinkhorn_transported <- as.list(tb_sinkhorn_transported)
+  res_simul_sink_trans[[i]] <- tb_sinkhorn_transported
+  
+  # Sequential Transport                                        
   sequential_transport <- seq_trans(
     data = tb, 
     adj = adj, 
@@ -460,7 +773,7 @@ for (i in 1:length(seeds)) {
     silent = FALSE,
     cl = cl
   )
-  res_simul_transp[[i]] <- sequential_transport
+  res_simul_seq_trans[[i]] <- sequential_transport$transported
   
   tb_untreated <- tb |> filter(!!sym(A_name) == !!A_untreated)
   tb_treated <- tb |> filter(!!sym(A_name) != !!A_untreated)
@@ -471,20 +784,73 @@ for (i in 1:length(seeds)) {
   ## Measuring Causal Effect----
   
   # With Causal Mediation Analysis
-  med_mod <- mediation::multimed(
+  tb_med <- tb |> 
+    mutate(
+      X3 = case_when(
+        X3 == "A" ~ 0,
+        X3 == "B" ~ 1,
+        X3 == "C" ~ 2
+      )
+    )
+
+  med_mod_X1 <- mediation::multimed(
     outcome = "Y", 
     med.main = "X1", 
-    med.alt = c("X2", "X3"),
+    med.alt = c("X2", "X3"), 
     treat = "A", 
-    data = tb |> mutate(X3 = as.numeric(X3))
+    data = tb_med
   )
-  
-  delta_0_med <- mean((med_mod$d0.lb + med_mod$d0.ub) / 2)
-  zeta_1_med <- mean((med_mod$z1.lb + med_mod$z1.ub) / 2)
-  tot_effect_med <- delta_0_med + zeta_1_med
+  delta_0_med_X1 <- mean((med_mod_X1$d0.lb + med_mod_X1$d0.ub) / 2)
+  zeta_1_med_X1 <- mean((med_mod_X1$z1.lb + med_mod_X1$z1.ub) / 2)
+  tot_effect_med_X1 <- delta_0_med_X1 + zeta_1_med_X1
+
+  med_mod_X2 <- mediation::multimed(
+    outcome = "Y", 
+    med.main = "X2", 
+    med.alt = c("X1", "X3"), 
+    treat = "A", 
+    data = tb_med
+  )
+  delta_0_med_X2 <- mean((med_mod_X2$d0.lb + med_mod_X2$d0.ub) / 2)
+  zeta_1_med_X2 <- mean((med_mod_X2$z1.lb + med_mod_X2$z1.ub) / 2)
+  tot_effect_med_X2 <- delta_0_med_X2 + zeta_1_med_X2
+
+  med_mod_X3 <- mediation::multimed(
+    outcome = "Y", 
+    med.main = "X3", 
+    med.alt = c("X1", "X2"), 
+    treat = "A", 
+    data = tb_med
+  )
+  delta_0_med_X3 <- mean((med_mod_X3$d0.lb + med_mod_X3$d0.ub) / 2)
+  zeta_1_med_X3 <- mean((med_mod_X3$z1.lb + med_mod_X3$z1.ub) / 2)
+  tot_effect_med_X3 <- delta_0_med_X3 + zeta_1_med_X3
+  # Summary of the causal effects
+  tot_effect_med <- tot_effect_med_X1
+  delta_0_med <- delta_0_med_X1 + delta_0_med_X2 + delta_0_med_X3
+  zeta_1_med <- tot_effect_med - delta_0_med
  
   # With Counterfactual Values
-  causal_effects_sot <- causal_effects_cf(
+  ## Optimal Transport
+  causal_effects_ot <- causal_effects_cf(
+    data_untreated = tb_untreated, 
+    data_treated = tb_treated,
+    data_cf = as_tibble(tb_ot_transported), 
+    Y_name = Y_name, 
+    A_name = A_name, 
+    A_untreated = A_untreated
+  )
+  ## Sinkhorn Optimal Transport
+  causal_effects_sink_ot <- causal_effects_cf(
+    data_untreated = tb_untreated, 
+    data_treated = tb_treated,
+    data_cf = as_tibble(tb_sinkhorn_transported), 
+    Y_name = Y_name, 
+    A_name = A_name, 
+    A_untreated = A_untreated
+  )
+  ## Sequential Transport
+  causal_effects_st <- causal_effects_cf(
     data_untreated = tb_untreated, 
     data_treated = tb_treated,
     data_cf = as_tibble(sequential_transport$transported), 
@@ -498,14 +864,23 @@ for (i in 1:length(seeds)) {
     delta_0_med = delta_0_med, 
     zeta_1_med = zeta_1_med, 
     tot_effect_med = tot_effect_med,
-    delta_0_sot = causal_effects_sot$delta_0,
-    zeta_1_sot = causal_effects_sot$zeta_1, 
-    tot_effect_sot = causal_effects_sot$tot_effect
+    delta_0_ot = causal_effects_ot$delta_0,
+    zeta_1_ot = causal_effects_ot$zeta_1, 
+    tot_effect_ot = causal_effects_ot$tot_effect,
+    delta_0_sink_ot = causal_effects_sink_ot$delta_0,
+    zeta_1_sink_ot = causal_effects_sink_ot$zeta_1, 
+    tot_effect_sink_ot = causal_effects_sink_ot$tot_effect,
+    delta_0_st = causal_effects_st$delta_0,
+    zeta_1_st = causal_effects_st$zeta_1, 
+    tot_effect_st = causal_effects_st$tot_effect
     )
 }
 
 
-save(res_simul_transp, res_simul_effects, file = "../output/res_simul.rda")
+save(res_simul_opt_trans, 
+    res_simul_sink_trans, 
+    res_simul_seq_trans, 
+    res_simul_effects, file = "../output/res_simul.rda")
 
 stopCluster(cl)
 ```
@@ -532,11 +907,11 @@ ggtern(
   data = gen_data(i) |> select(A, X3_p_A,X3_p_B, X3_p_C) |> 
     mutate(A = as.character(A)) |> 
     bind_rows(
-      as_tibble(res_simul_transp[[i]]$transported_prob$X3) |> 
+      as_tibble(res_simul_seq_trans[[i]]$transported_prob$X3) |> 
         rename_with(.fn = ~str_c("X3_p_", .)) |> 
-        mutate(A = "1 to 0")
+        mutate(A = "0 to 1")
     ) |> 
-    mutate(A = factor(A, levels = c("0", "1", "1 to 0"))),
+    mutate(A = factor(A, levels = c("0", "1", "0 to 1"))),
   mapping = aes(x = X3_p_A, y = X3_p_B, z = X3_p_C)
 ) +
   geom_point(
@@ -544,7 +919,7 @@ ggtern(
   ) +
   labs(x = "A", y = "B", z = "C") +
   scale_colour_manual(
-    values = c("0" = colours[["0"]], "1" = colours[["1"]], "1 to 0" = colours[["transp"]])
+    values = c("0" = colours[["0"]], "1" = colours[["1"]], "0 to 1" = colours[["transp"]])
   ) +
   theme_light(base_size = font_size, base_family = font_family) +
   theme_ggtern_paper() +
@@ -566,7 +941,7 @@ ggtern(
 ```
 
 Then, we can look at the measures of causal effects.
-```{r define-ATT}
+```{r define-causal-effects}
 causal_effects <- list_rbind(res_simul_effects)
 ```
 
@@ -576,6 +951,7 @@ causal_effects <- list_rbind(res_simul_effects)
 #| code-summary: Codes to create the Figure.
 #| fig-cap: !expr glue::glue("Causal effects, {n} replications.", n = length(seeds))
 #| label: fig-simul-mc-causal-effects
+library(stringr)
 data_plot <- causal_effects |> 
   pivot_longer(
     cols = -seed, 
@@ -598,15 +974,17 @@ data_plot <- causal_effects |>
       )),
     Method = case_when(
       str_detect(name, "_med$") ~ "causal_med",
-      str_detect(name, "_sot$") ~ "seq_ot",
+      str_detect(name, "_st$") ~ "seq_ot",
+      str_detect(name, "_sink_ot$") ~ "sink_ot",
+      str_detect(name, "_ot$") ~ "ot",
       TRUE ~ NA_character_
     ),
     Method = factor(
       Method,
       levels = c(
-        "causal_med", "seq_ot"
+        "causal_med", "seq_ot", "sink_ot", "ot"
       ),
-      labels = c("Causal Med.", "Seq. OT")
+      labels = c("Causal Med.", "Seq. OT", "Reg. OT", "OT")
     )
   )
 ggplot(
@@ -627,6 +1005,8 @@ ggplot(
     NULL,
     values = c(
       "Causal Med." = "#E69F00",
+      "OT" = "pink",
+      "Reg. OT" = "lightblue",
       "Seq. OT" = "#009E73"
     )
   ) +
