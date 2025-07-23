@@ -5,11 +5,12 @@
 
 ## Objectives
 
-In this page, XXX
+In this page, we recall some notations and key concepts about causal effects.
 
 
 
 :::
+
 
 ```{r package-settings}
 #| warning: false
@@ -41,6 +42,10 @@ $$
 \definecolor{colGpe1}{RGB}{127, 23, 14}
 \definecolor{colGpe0}{RGB}{27, 149, 224}
 $$
+
+
+
+
 We load some useful functions to export graphs (see [Chatper -@sec-utils]).
 
 ```{r source-files}
@@ -48,6 +53,103 @@ We load some useful functions to export graphs (see [Chatper -@sec-utils]).
 #| warning: false
 source("../scripts/utils.R")
 ```
+
+
+## Causal Effects
+
+Let $a\in\{0,1\}$ be a binary treatment, and $y\in\mathcal{Y}$ be an outcome of interest. Assume that the treatment influences the outcome both directly and through an indirect effect, via a set of mediators $\boldsymbol{x}\in\mathcal{X}$.
+
+Let $y(a)$ denote the potential outcome under treatment $a$ and, following @imai2010identification, let $\boldsymbol{x}(a)$ be the potential values for the mediator under treatment $a$.
+
+Assume that no variable influences the treatment, making it the root node in the causal structure, as shown in the DAG in @fig-DAG-mediation.
+
+::: {#fig-DAG-mediation}
+
+```{.tikz}
+\begin{tikzpicture}[transform shape]
+  \node[fill=red!30] (a) at (0,0.5) {$a$};
+  \node[fill=yellow!60] (x) at (1.5,1) {$x$};
+  \node[fill=blue!30] (y) at (3,0.5) {$y$};
+  \path[->, black] (a) edge (x);
+  \path[->, black] (a) edge (y);
+  \path[->, black] (x) edge (y);
+\end{tikzpicture}
+```
+
+Causal DAG. Mediation scenario in which the treatment $a$ affects the outcome $y$ both directly and indirectly through an intermediate mediator $x$.
+:::
+
+
+
+These counterfactual mediator values allow for the definition of **natural direct and indirect effects**.
+
+
+:::{.callout-note}
+
+### Natural Indirect Effect (@pearl2001direct)
+
+The causal mediation effect for the $i$th individual writes:
+
+$$
+\delta(a):=\widehat{\mu}_a(\boldsymbol{x}(1))-\widehat{\mu}_a(\boldsymbol{x}(0))
+$$
+where $\widehat{\mu}_a(\boldsymbol{x})$ denote the predicted outcome under treatment $a$ and mediator value $\boldsymbol{x}$.
+
+@imai2010identification refers to $\delta_i{(a)}$ as the **causal mediation effect**.
+:::
+
+
+As noted by @imai2010identification, under treatment status $a$, we only observe $\boldsymbol{x}{(a)}$ and we never observe $\boldsymbol{x}{(1-a)}$. Using optimal transport, we will build the unobserved value, the counterfactual.
+
+
+:::{.callout-note}
+
+### Average Natural Indirect Effect
+
+The average causal mediation effects writes:
+
+$$
+\begin{align*}
+\bar{\delta}{(a)} & \equiv \mathbb{E}\bigl[\delta_i{(a)}\bigr]
+\end{align*}
+$$ {#eq-acme}
+
+
+:::
+
+:::{.callout-note}
+
+### Natural Direct Effect (@pearl2001direct, @imai2010identification)
+
+The natural direct effect writes:
+$$
+\zeta(a):=\widehat{\mu}_1(\boldsymbol{x}(a))-\widehat{\mu}_0(\boldsymbol{x}(a))\\
+$$ {#eq-nde}
+
+Hence, it represents the direct effect of the treatment for a given level of the mediator.
+
+:::
+
+
+:::{.callout-note}
+
+### Total Causal Effect (@imai2010identification)
+
+The total causal effect is given by
+$$
+\tau:=\delta(a)+\zeta(1-a).
+$$ {#eq-tce}
+
+:::
+
+As explained in @robins1992identifiability and further formalized in @pearl2001direct, in a randomized experiment where mediators are measured after treatment assignment, the total, direct, and indirect effects are identifiable. More specifically, under well-defined counterfactuals, the unit-level total effect $\tau$ can be additively decomposed, as illustrated in @fig-gaussian-1, into:
+$$
+\begin{cases}
+    \delta(a):=\widehat{\mu}_a(\boldsymbol{x}(1))-\widehat{\mu}_a(\boldsymbol{x}(0))\\
+    \zeta(a):=\widehat{\mu}_1(\boldsymbol{x}(a))-\widehat{\mu}_0(\boldsymbol{x}(a))\\
+    \tau:=\delta(a)+\zeta(1-a).
+\end{cases}
+$$
 
 
 ```{r}
