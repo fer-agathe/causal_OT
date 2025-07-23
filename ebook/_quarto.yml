@@ -12,7 +12,6 @@ book:
       chapters:
         - reminders.qmd
         - gaussian-example.qmd
-        - gaussian-example-mc.qmd
     - part: II. Functions for Illustrations
       chapters:
         - utils.qmd
@@ -50,11 +49,14 @@ format:
     include-in-header:
     - file: mathjax-color.html
 
-
-
-
 filters:
   - pseudocode
+  - diagram
 
+diagram:
+  directory: figs/diagrams
+  format: svg
+  tikz:
+    engine: pdflatex
 
 editor: source
