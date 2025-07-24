@@ -57,6 +57,8 @@ $$
 ```{r graphs-settings}
 #| code-fold: true
 #| code-summary: Codes for graphical parameters.
+#| warning: false
+#| message: false
 library(extrafont, quietly = TRUE)
 font_family <- "CMU Serif"
 
@@ -98,7 +100,6 @@ tb <- compas |>
    race = ifelse(race == "African-American", 0, 1), # African-American as "untreated"
    is_recid = ifelse(is_recid == 0, 0, 1)
   )
-  # working with a fraction of observations here (40%)
 ```
 
 ```{r show-summary-tb}
@@ -136,12 +137,12 @@ plot(causal_graph)
 
 Let us set a seed for reproducibility.
 
-```{r}
+```{r set-seed}
 seed <- 1234
 set.seed(seed)
 ```
 
-```{r}
+```{r define-tb_treated}
 A_name <- "race" # treatment name
 Y_name <- "is_recid" # outcome name
 A_untreated <- 0
@@ -157,7 +158,7 @@ Let us follow the DAG from @fig-dag-compas and build the counterfactuals of Blac
 
 We apply multivariate optimal transport (OT), following the methodology developed in @de2024transport.
 
-```{r}
+```{r define-tb_untreated_wo_A}
 tb_untreated_wo_A <- tb_untreated[ , !(names(tb_untreated) %in% A_name)]
 tb_treated_wo_A <- tb_treated[ , !(names(tb_treated) %in% A_name)]
 n0 <- nrow(tb_untreated_wo_A)
@@ -170,7 +171,7 @@ X1 <- tb_treated_wo_A[ , !(names(tb_treated_wo_A) %in% Y_name)]
 
 To apply Optimal Transport on the COMPAS dataset, we first need to one-hot the categorical variables.
 
-```{r}
+```{r define-cat_counts}
 num_cols <- names(X0)[sapply(X0, is.numeric)]
 cat_cols <- names(X0)[sapply(X0, function(col) is.factor(col) || is.character(col))]
 X0_num <- X0[ , num_cols]
@@ -182,7 +183,9 @@ cat_counts <- sapply(X0[ , cat_cols], function(col) length(unique(col)))
 ```
 
 Categorical variables are one-hot encoded:
-```{r}
+```{r define-X0_cat_encoded}
+#| message: false
+#| warning: false
 library(caret)
 X0_cat_encoded <- list()
 X1_cat_encoded <- list()
@@ -214,14 +217,14 @@ for (col in cat_cols) {
 ```
 We calculate Euclidean distance for numerical variables.
 
-```{r}
+```{r define-num_dist}
 # library(proxy)
 num_dist <- proxy::dist(x = X0_num, y = X1_num, method = "Euclidean")
 num_dist <- as.matrix(num_dist)
 ```
 
 For categorical variables, we use the Hamming distance.
-```{r}
+```{r define-cat_dists}
 cat_dists <- list()
 for (col in cat_cols) {
   mat_0 <- as.matrix(X0_cat_encoded[[col]])
@@ -233,7 +236,7 @@ for (col in cat_cols) {
 
 Then we need to combine the two distance matrices. We use weights equal to the proportion of numerical variables and the proportion of categorical variables, respectively for distances based on numerical and categorical variables.
 
-```{r}
+```{r define-combined_cost}
 combined_cost <- num_dist
 for (i in seq_along(cat_dists)) {
   combined_cost <- combined_cost + cat_dists[[i]]
@@ -241,7 +244,7 @@ for (i in seq_along(cat_dists)) {
 ```
 
 Then, we can compute the transport map:
-```{r}
+```{r define-transport_res}
 # Uniform weights (equal mass)
 w0 <- rep(1 / n0, n0)
 w1 <- rep(1 / n1, n1)
@@ -260,12 +263,12 @@ for(i in seq_len(nrow(transport_res))) {
 ```
 
 We first transport the numerical variables.
-```{r}
+```{r define-num_transported}
 num_transported <- n0 * (transport_plan %*% as.matrix(X1_num))
 ```
 
 Then, we transport the categorical variables with label reconstruction (not perfect here).
-```{r}
+```{r define-cat_transported}
 cat_transported <- list()
 for (col in cat_cols) {
   cat_probs <- transport_plan %*% as.matrix(X1_cat_encoded[[col]])
@@ -278,7 +281,7 @@ for (col in cat_cols) {
 ```
 
 We can now store the results into a tibble.
-```{r}
+```{r define-tb_ot_transported}
 tb_ot_transported <- as_tibble(num_transported)
 for (col in cat_cols) {
   tb_ot_transported[[col]] <- cat_transported[[col]]
@@ -287,7 +290,7 @@ for (col in cat_cols) {
 save(tb_ot_transported, file = "../output/ot-compas.rda")
 ```
 
-```{r}
+```{r load-tb_ot_transported}
 # Load tb_ot_transported
 load("../output/ot-compas.rda")
 tb_ot_transported <- tb_ot_transported |>
@@ -298,22 +301,22 @@ tb_ot_transported <- as.list(tb_ot_transported)
 ### Penalized Optimal Transport
 
 We can directly compute the transport map using Sinkhorn penalty.
-```{r}
+```{r define-sinkhorn_transport_res}
 # Compute transport plan
 sinkhorn_transport_res <- T4transport::sinkhornD(
   combined_cost, wx = w0, wy = w1, lambda = 0.1
-  )
+)
 
 sinkhorn_transport_plan <- sinkhorn_transport_res$plan
 ```
 
 We first transport the numerical variables.
-```{r}
+```{r define-num_sinkhorn_transported}
 num_sinkhorn_transported <- n0 * (sinkhorn_transport_plan %*% as.matrix(X1_num))
 ```
 
 Then, we transport the categorical variables with label reconstruction (not perfect here).
-```{r}
+```{r define-cat_sinkhorn_transported}
 cat_sinkhorn_transported <- list()
 for (col in cat_cols) {
   cat_probs <- sinkhorn_transport_plan %*% as.matrix(X1_cat_encoded[[col]])
@@ -326,7 +329,7 @@ for (col in cat_cols) {
 ```
 
 We can now store the results into a tibble.
-```{r}
+```{r define-tb_sinkhorn_transported}
 tb_sinkhorn_transported <- as_tibble(num_sinkhorn_transported)
 for (col in cat_cols) {
   tb_sinkhorn_transported[[col]] <- cat_sinkhorn_transported[[col]]
@@ -335,7 +338,7 @@ for (col in cat_cols) {
 save(tb_sinkhorn_transported, file = "../output/sinkhorn-compas.rda")
 ```
 
-```{r}
+```{r load-tb_sinkhorn_transported}
 # Load tb_sinkhorn_transported
 load("../output/sinkhorn-compas.rda")
 tb_sinkhorn_transported <- tb_sinkhorn_transported |>
@@ -476,7 +479,7 @@ library(randomForest)
 
 We use a random forest to estimate the outcome model (see `causal_effects_cf()`{.R} in [Chapter -@sec-functions]).
 
-```{r}
+```{r define-causal_effects_ot}
 #| warning: false
 #| message: false
 
@@ -498,11 +501,11 @@ cbind(
 
 ### With Penalized Optimal Transport
 
-```{r}
+```{r define-causal_effects_sink_ot}
 #| warning: false
 #| message: false
 
-causal_effects_ot <- causal_effects_cf(
+causal_effects_sink_ot <- causal_effects_cf(
   data_untreated = tb_untreated, 
   data_treated = tb_treated,
   data_cf = as_tibble(tb_sinkhorn_transported), 
@@ -512,15 +515,15 @@ causal_effects_ot <- causal_effects_cf(
 )
 
 cbind(
-  delta_0 = causal_effects_ot$delta_0,
-  zeta_1 = causal_effects_ot$zeta_1, 
-  tot_effect = causal_effects_ot$tot_effect
+  delta_0 = causal_effects_sink_ot$delta_0,
+  zeta_1 = causal_effects_sink_ot$zeta_1, 
+  tot_effect = causal_effects_sink_ot$tot_effect
 )
 ```
 
 ### With Sequential Transport
 
-```{r}
+```{r define-causal_effects_st}
 #| warning: false
 #| message: false
 
