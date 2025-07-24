@@ -5,7 +5,7 @@
 
 ## Objectives
 
-In this page, xxx
+In this chapter, we illustrate how our methodology, CaMeLOT, works on simulated data.
 
 :::
 
@@ -55,6 +55,8 @@ $$
 ```{r graphs-settings}
 #| code-fold: true
 #| code-summary: Codes for graphical parameters.
+#| message: false
+#| warning: false
 library(extrafont, quietly = TRUE)
 col_group <- c("#00A08A","#F2AD00", "#1b95e0")
 colour_methods <- c(
@@ -140,7 +142,7 @@ The outcome $Y$ is then drawn from a Bernoulli distribution with success probabi
 
 For each observation, we additionally simulate a counterfactual covariate vector and outcome under the opposite treatment status. This includes drawing $(X_1^{\text{cf}}, X_2^{\text{cf}})$ from the treatment-specific bivariate normal distribution of the opposite group, computing the corresponding $X_3^{\text{cf}}$ using the same multinomial model (with $A$ flipped), and evaluating $Y^{\text{cf}}$ via the appropriate counterfactual logit model.
 
-We draw $n_0=400$ observations in group 0 and $n_1=200$ observations in group 1. We generate a function, `gen_data()`{.R} to generate data from this data generating process.
+We draw $n_0=400$ observations in `r colorize("group 0", colGpe0)` and $n_1=200$ observations in `r colorize("group 1", colGpe1)`. We generate a function, `gen_data()`{.R} to generate data from this data generating process.
 
 ```{r define-gen_data}
 #| code-fold: true
@@ -244,12 +246,12 @@ tb <- gen_data(2) |>
   mutate(across(where(is.character), ~as.factor(.x)))
 ```
 
+The distribution of the true probabilities in `r colorize("group 0", colGpe0)` and in `r colorize("group 1", colGpe1)` are shown in @fig-dist-true-prob.
 
 ```{r}
 #| code-fold: true
 #| code-summary: Codes to create the Figure
 #| fig-cap: !expr glue::glue("Distribution of the true probability of the outcome across groups for the <span style='color:{c0};'>untreated</span> and the <span style='color:{c1};'>treated</span>, for observed values (left) and unobserved values (right).", c0 = colours[["0"]], c1 = colours[["1"]])
-
 #| label: fig-dist-true-prob
 #| message: false
 #| warning: false
@@ -267,7 +269,7 @@ ggplot(
     position = "identity", bins = 30
   ) +
   facet_wrap(~type) +
-  scale_fill_manual(values = c("0" = colours[["0"]], "1" = colours[["1"]])) #+
+  scale_fill_manual(values = c("0" = colours[["0"]], "1" = colours[["1"]])) +
   theme_paper()
 ```
 
@@ -299,16 +301,16 @@ plot(causal_graph)
 
 
 
-Let us follow this DAG and build the counterfactuals of `r colorize("untreated", colours[["0"]])`: we thus transport individuals from $A=0$ to $A=1$. Let us set a seed for reproducibility.
+Let us follow this DAG and build the counterfactuals of `r colorize("untreated", colGpe0)`: we thus transport individuals from $A=0$ to $A=1$. Let us set a seed for reproducibility.
 
-```{r}
+```{r set-seed}
 seed <- 1234
 set.seed(seed)
 ```
 
-We call the `seq_trans()`{.R} function (see [Chapter -@sec-functions]) function to build the counterfactuals of untreated individuals. The estimations are done using parallel computation.
+We call the `seq_trans()`{.R} function (see [Chapter -@sec-functions]) function to build the counterfactuals of `r colorize("untreated units", colGpe0)`. The estimations are done using parallel computation.
 
-```{r}
+```{r define-tb_untreated}
 A_name <- "A" # treatment name
 Y_name <- "Y" # outcome name
 A_untreated <- 0
@@ -319,13 +321,13 @@ tb_untreated <- tb_estim[ind_untreated, ]
 tb_treated <- tb_estim[-ind_untreated, ]
 ```
 
-Let us follow the DAG from @fig-dag and build the counterfactuals of Black individuals: we thus transport individuals from $A=0$ to $A=1$, using the predictions on the test set.
+Let us follow the DAG from @fig-dag and build the counterfactuals of units from `r colorize("group 0", colGpe0)`: we thus transport individuals from $A=0$ to $A=1$, using the predictions on the test set.
 
 ### Multivariate Optimal Transport
 
 We apply multivariate optimal transport (OT), following the methodology developed in @de2024transport.
 
-```{r, eval=FALSE}
+```{r define-tb_untreated_wo_A}
 tb_untreated_wo_A <- tb_untreated[ , !(names(tb_untreated) %in% A_name)]
 tb_treated_wo_A <- tb_treated[ , !(names(tb_treated) %in% A_name)]
 n0 <- nrow(tb_untreated_wo_A)
@@ -336,9 +338,9 @@ X0 <- tb_untreated_wo_A[ , !(names(tb_untreated_wo_A) %in% Y_name)]
 X1 <- tb_treated_wo_A[ , !(names(tb_treated_wo_A) %in% Y_name)]
 ```
 
-To apply Optimal Transport on the COMPAS dataset, we first need to one-hot the categorical variables.
+To apply Optimal Transport on the dataset, we first need to one-hot the categorical variable.
 
-```{r, eval=FALSE}
+```{r define-cat_counts}
 num_cols <- names(X0)[sapply(X0, is.numeric)]
 cat_cols <- names(X0)[sapply(X0, function(col) is.factor(col) || is.character(col))]
 X0_num <- X0[ , num_cols]
@@ -350,7 +352,8 @@ cat_counts <- sapply(X0[ , cat_cols], function(col) length(unique(col)))
 ```
 
 Categorical variables are one-hot encoded:
-```{r, eval=FALSE}
+```{r one-hot-encoding}
+library(caret)
 X0_cat_encoded <- list()
 X1_cat_encoded <- list()
 for (col in cat_cols) {
@@ -372,11 +375,11 @@ for (col in cat_cols) {
   # Aling categories in both treated/untreated groups
   all_cols <- union(colnames(dummy_0_df), colnames(dummy_1_df))
   dummy_0_df <- dummy_0_df |>
-    mutate(across(.fns = identity)) |>
+    mutate(across(everything(), .fns = identity)) |>
     dplyr::select(all_of(all_cols)) |>
     mutate(across(everything(), ~replace_na(.x, 0)))
   dummy_1_df <- dummy_1_df |>
-    mutate(across(.fns = identity)) |>
+    mutate(across(everything(), .fns = identity)) |>
     dplyr::select(all_of(all_cols)) |>
     mutate(across(everything(), ~replace_na(.x, 0)))
 
@@ -386,14 +389,14 @@ for (col in cat_cols) {
 ```
 We calculate Euclidean distance for numerical variables.
 
-```{r, eval=FALSE}
+```{r define-num_dist}
 # library(proxy)
 num_dist <- proxy::dist(x = X0_num, y = X1_num, method = "Euclidean")
 num_dist <- as.matrix(num_dist)
 ```
 
 For categorical variables, we use the Hamming distance.
-```{r, eval=FALSE}
+```{r define-cat_dists}
 cat_dists <- list()
 for (col in cat_cols) {
   mat_0 <- as.matrix(X0_cat_encoded[[col]])
@@ -405,7 +408,7 @@ for (col in cat_cols) {
 
 Then we need to combine the two distance matrices. We use weights equal to the proportion of numerical variables and the proportion of categorical variables, respectively for distances based on numerical and categorical variables.
 
-```{r, eval=FALSE}
+```{r define-combined_cost}
 combined_cost <- num_dist
 for (i in seq_along(cat_dists)) {
   combined_cost <- combined_cost + cat_dists[[i]]
@@ -413,7 +416,7 @@ for (i in seq_along(cat_dists)) {
 ```
 
 Then, we can compute the transport map:
-```{r, eval=FALSE}
+```{r define-transport_plan-OT}
 # Uniform weights (equal mass)
 w0 <- rep(1 / n0, n0)
 w1 <- rep(1 / n1, n1)
@@ -432,12 +435,12 @@ for(i in seq_len(nrow(transport_res))) {
 ```
 
 We first transport the numerical variables.
-```{r, eval=FALSE}
+```{r define-num_transported}
 num_transported <- n0 * (transport_plan %*% as.matrix(X1_num))
 ```
 
 Then, we transport the categorical variables with label reconstruction (not perfect here).
-```{r, eval=FALSE}
+```{r define-cat_transported}
 cat_transported <- list()
 for (col in cat_cols) {
   cat_probs <- transport_plan %*% as.matrix(X1_cat_encoded[[col]])
@@ -445,12 +448,15 @@ for (col in cat_cols) {
   # For each obs., we take the index with the maximum value (approx. proba)
   max_indices <- apply(cat_probs, 1, which.max)
   prefix_pattern <- paste0("^", col, "\\.")
-  cat_transported[[col]] <- sapply(max_indices, function(x) sub(prefix_pattern, "", cat_encoded_columns[x]))
+  cat_transported[[col]] <- sapply(
+    max_indices, 
+    function(x) sub(prefix_pattern, "", cat_encoded_columns[x])
+  )
 }
 ```
 
 We can now store the results into a tibble.
-```{r, eval=FALSE}
+```{r save-tb_ot_transported}
 tb_ot_transported <- as_tibble(num_transported)
 for (col in cat_cols) {
   tb_ot_transported[[col]] <- cat_transported[[col]]
@@ -459,7 +465,7 @@ for (col in cat_cols) {
 save(tb_ot_transported, file = "../output/ot-synthetic.rda")
 ```
 
-```{r}
+```{r load-tb_ot_transported}
 # Load tb_ot_transported
 load("../output/ot-synthetic.rda")
 tb_ot_transported <- tb_ot_transported |>
@@ -471,23 +477,23 @@ We can also use the function `optimal_transport_cf()`{.R} with default parameter
 
 ### Penalized Optimal Transport
 
-We can directly compute the transport map using Sinkhorn penalty.
-```{r, eval=FALSE}
+We can directly compute the transport map using Sinkhorn penalty. Let us set the regularization parameter, $\gamma=0.1$.
+```{r define-sinkhorn_transport_res}
 # Compute transport plan
 sinkhorn_transport_res <- T4transport::sinkhornD(
   combined_cost, wx = w0, wy = w1, lambda = 0.1
-  )
+)
 
 sinkhorn_transport_plan <- sinkhorn_transport_res$plan
 ```
 
 We first transport the numerical variables.
-```{r, eval=FALSE}
+```{r define-num_sinkhorn_transported}
 num_sinkhorn_transported <- n0 * (sinkhorn_transport_plan %*% as.matrix(X1_num))
 ```
 
 Then, we transport the categorical variables with label reconstruction (not perfect here).
-```{r, eval=FALSE}
+```{r define-cat_sinkhorn_transported}
 cat_sinkhorn_transported <- list()
 for (col in cat_cols) {
   cat_probs <- sinkhorn_transport_plan %*% as.matrix(X1_cat_encoded[[col]])
@@ -495,12 +501,15 @@ for (col in cat_cols) {
   # For each obs., we take the index with the maximum value (approx. proba)
   max_indices <- apply(cat_probs, 1, which.max)
   prefix_pattern <- paste0("^", col, "\\.")
-  cat_sinkhorn_transported[[col]] <- sapply(max_indices, function(x) sub(prefix_pattern, "", cat_encoded_columns[x]))
+  cat_sinkhorn_transported[[col]] <- sapply(
+    max_indices, 
+    function(x) sub(prefix_pattern, "", cat_encoded_columns[x])
+  )
 }
 ```
 
 We can now store the results into a tibble.
-```{r, eval=FALSE}
+```{r save-tb_sinkhorn_transported}
 tb_sinkhorn_transported <- as_tibble(num_sinkhorn_transported)
 for (col in cat_cols) {
   tb_sinkhorn_transported[[col]] <- cat_sinkhorn_transported[[col]]
@@ -509,7 +518,7 @@ for (col in cat_cols) {
 save(tb_sinkhorn_transported, file = "../output/sinkhorn-synthetic.rda")
 ```
 
-```{r}
+```{r load-tb_sinkhorn_transported}
 # Load tb_sinkhorn_transported
 load("../output/sinkhorn-synthetic.rda")
 tb_sinkhorn_transported <- tb_sinkhorn_transported |>
@@ -521,9 +530,7 @@ We can also use the function `optimal_transport_cf()`{.R} but this time we need 
 
 ### Sequential Transport
 
-```{r define-sequential_transport, eval=FALSE}
-# The estimation takes about 16 secondes to run.
-# We do not run it here, it was previously estimated.
+```{r define-sequential_transport}
 library(pbapply)
 library(parallel)
 ncl <- detectCores()-1
@@ -577,7 +584,7 @@ and the different indirect effects:
 #| message: false
 #| warning: false
 # library(mediation) # we do not load it
-#  otherwise it masks a lot of useful functions
+# otherwise it masks a lot of useful functions
 
 # We encode the categorical variable as for optimal transport
 tb_med <- tb_estim |> 
@@ -658,7 +665,7 @@ library(randomForest)
 
 We use a random forest to estimate the outcome model (see `causal_effects_cf()`{.R} in [Chapter -@sec-functions]).
 
-```{r}
+```{r define-causal_effects_ot}
 #| warning: false
 #| message: false
 
@@ -680,11 +687,11 @@ cbind(
 
 ### With Penalized Optimal Transport
 
-```{r}
+```{r define-causal_effects_sink_ot}
 #| warning: false
 #| message: false
 
-causal_effects_ot <- causal_effects_cf(
+causal_effects_sink_ot <- causal_effects_cf(
   data_untreated = tb_untreated, 
   data_treated = tb_treated,
   data_cf = as_tibble(tb_sinkhorn_transported), 
@@ -694,15 +701,15 @@ causal_effects_ot <- causal_effects_cf(
 )
 
 cbind(
-  delta_0 = causal_effects_ot$delta_0,
-  zeta_1 = causal_effects_ot$zeta_1, 
-  tot_effect = causal_effects_ot$tot_effect
+  delta_0 = causal_effects_sink_ot$delta_0,
+  zeta_1 = causal_effects_sink_ot$zeta_1, 
+  tot_effect = causal_effects_sink_ot$tot_effect
 )
 ```
 
 ### With Sequential Transport
 
-```{r}
+```{r define-causal_effects_st}
 #| warning: false
 #| message: false
 
@@ -736,8 +743,10 @@ res_simul_effects <- vector(mode = "list", length = length(seeds))
 ```
 
 ```{r, eval=FALSE}
-# This chunk is not evaluated.
-# Each of the 200 replications takes about 16 seconds to run
+# This chunk is not evaluated. 
+# The results from previously run simulations are loaded after this chunk.
+# Each of the 200 replications takes about 9 seconds per run on a MB Pro with
+# a Apple M2 Pro chip and 32GB RAM.
 library(pbapply)
 library(parallel)
 ncl <- detectCores()-1
@@ -761,23 +770,25 @@ for (i in 1:length(seeds)) {
   Y_name <- "Y"
   
   # Optimal Transport
-  tb_ot_transported <- optimal_transport_cf(tb,
-                                            Y_name,
-                                            A_name,
-                                            A_untreated
-                                            )
+  tb_ot_transported <- optimal_transport_cf(
+    tb,
+    Y_name,
+    A_name,
+    A_untreated
+  )
   tb_ot_transported <- tb_ot_transported |>
     mutate(X3 = as.factor(X3))
   tb_ot_transported <- as.list(tb_ot_transported)
   res_simul_opt_trans[[i]] <- tb_ot_transported
 
   # Penalized (0.1) Optimal Transport with Sinkhorn
-  tb_sinkhorn_transported <- optimal_transport_cf(tb,
-                                                  Y_name,
-                                                  A_name,
-                                                  A_untreated,
-                                                  pen = 0.1
-                                                  )
+  tb_sinkhorn_transported <- optimal_transport_cf(
+    tb,
+    Y_name,
+    A_name,
+    A_untreated,
+    pen = 0.1
+  )
   tb_sinkhorn_transported <- tb_sinkhorn_transported |>
     mutate(X3 = as.factor(X3))
   tb_sinkhorn_transported <- as.list(tb_sinkhorn_transported)
@@ -898,11 +909,13 @@ for (i in 1:length(seeds)) {
     )
 }
 
-
-save(res_simul_opt_trans, 
-    res_simul_sink_trans, 
-    res_simul_seq_trans, 
-    res_simul_effects, file = "../output/res_simul.rda")
+save(
+  res_simul_opt_trans, 
+  res_simul_sink_trans, 
+  res_simul_seq_trans, 
+  res_simul_effects, 
+  file = "../output/res_simul.rda"
+)
 
 stopCluster(cl)
 ```
@@ -914,55 +927,8 @@ We load previously run simulations:
 load("../output/res_simul.rda")
 ```
 
-We can have a look at the `r colorize("transported values", colours[["transp"]])` for variable $X_3$ (from `r colorize("group 0", colours[["0"]])` to `r colorize("group 1", colours[["1"]])`) of the first run, on a ternary plot (@fig-ternary-simul-1).
 
-```{r}
-#| code-fold: true
-#| code-summary: Codes to create the Figure.
-#| fig-cap: !expr glue::glue("$X_3$ values for individuals from <span style='color:{c0};'>group 0</span>, those from <span style='color:{c1};'>group 1</span>, and those <span style='color:{c2};'>transported</span> from group 0 to group 1 using sequential transport.", c0 = colours[["0"]], c1 = colours[["1"]], c2 = colours[["transp"]])
-#| label: fig-ternary-simul-1
-#| warning: false
-#| message: false
-library(ggtern)
-i <- 1
-ggtern(
-  data = gen_data(i) |> dplyr::select(A, X3_p_A,X3_p_B, X3_p_C) |> 
-    mutate(A = as.character(A)) |> 
-    bind_rows(
-      as_tibble(res_simul_seq_trans[[i]]$transported_prob$X3) |> 
-        rename_with(.fn = ~str_c("X3_p_", .)) |> 
-        mutate(A = "0 to 1")
-    ) |> 
-    mutate(A = factor(A, levels = c("0", "1", "0 to 1"))),
-  mapping = aes(x = X3_p_A, y = X3_p_B, z = X3_p_C)
-) +
-  geom_point(
-    mapping = aes(colour = A), size = .5, alpha = .2
-  ) +
-  labs(x = "A", y = "B", z = "C") +
-  scale_colour_manual(
-    values = c("0" = colours[["0"]], "1" = colours[["1"]], "0 to 1" = colours[["transp"]])
-  ) +
-  theme_light(base_size = font_size, base_family = font_family) +
-  theme_ggtern_paper() +
-  theme(
-    legend.title = element_text(size = .8 * font_size),
-    legend.text = element_text(size = .8 * font_size),
-    tern.axis.vshift = .08,
-    tern.axis.arrow.sep = .16,
-  ) +
-  theme_hidetitles() +
-  guides(
-    colour = guide_legend(
-      override.aes = list(
-        size = 1.5,
-        alpha = 1
-      )
-    )
-  )
-```
-
-Then, we can look at the measures of causal effects.
+We can look at the measures of causal effects.
 ```{r define-causal-effects}
 causal_effects <- list_rbind(res_simul_effects)
 ```
@@ -974,7 +940,18 @@ causal_effects <- list_rbind(res_simul_effects)
 #| fig-cap: !expr glue::glue("Causal effects, {n} replications.", n = length(seeds))
 #| label: fig-simul-mc-causal-effects
 library(stringr)
-export_pdf <- TRUE
+library(tikzDevice)
+export_pdf <- FALSE
+
+labels_strip <- c(
+    "$\\bar{\\delta}(0)$",
+    "$\\bar{\\zeta}(1)$",
+    "$\\bar{\\tau}$"
+  )
+if (export_pdf == FALSE) {
+  labels_strip = latex2exp::TeX(labels_strip)
+}
+
 
 data_plot <- causal_effects |> 
   pivot_longer(
@@ -991,11 +968,8 @@ data_plot <- causal_effects |>
     type = factor(
       type, 
       levels = c("delta", "zeta", "tot_effect"),
-      labels = c(
-        "$\\bar{\\delta}(0)$",
-        "$\\bar{\\zeta}(1)$",
-        "$\\bar{\\tau}$"
-      )),
+      labels = labels_strip
+    ),
     Method = case_when(
       str_detect(name, "_med$") ~ "causal_med",
       str_detect(name, "_st$") ~ "seq_ot",
@@ -1064,5 +1038,3 @@ if (export_pdf == TRUE) {
   system(paste0("pdfcrop figs/xp-simulated-violin-mc.pdf figs/xp-simulated-violin-mc.pdf"))
 }
 ```
-
-
