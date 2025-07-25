@@ -34,6 +34,7 @@ theme_paper <- function (...) {
     panel.border = element_blank(),
     axis.line = element_line(color = "black"),
     axis.text = element_text(color = "black"),
+    axis.title = element_text(color = "black", size = rel(.8)),
     legend.text = element_text(size = rel(1)),
     legend.title = element_text(size = rel(1)),
     legend.background = element_rect(fill = "transparent", color = NULL),
@@ -44,11 +45,11 @@ theme_paper <- function (...) {
     panel.spacing = unit(1, "lines"),
     panel.grid.major = element_line(colour = "grey90"),
     panel.grid.minor = element_blank(),
-    plot.title = element_text(hjust = 0, size = rel(1), face = "bold"),
+    plot.title = element_text(hjust = 0, size = rel(.8), face = "bold"),
     plot.title.position = "plot",
     plot.margin = unit(c(1, 1, 1, 1), "lines"),
     strip.background = element_rect(fill = NA, colour = NA),
-    strip.text = element_text(size = rel(1))
+    strip.text = element_text(size = rel(.8))
   )
 }
 
