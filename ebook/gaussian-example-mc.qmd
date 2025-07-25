@@ -1018,8 +1018,6 @@ p <- ggplot(
     labels = ifelse(unique(data_plot$a) %% .5 == 0, unique(data_plot$a), "")
   )
 
-p
-
 if (export_pdf == TRUE) {
   filename <- "gaussian-mc-alpha-tau"
   ggplot2_to_pdf(
@@ -1031,6 +1029,8 @@ if (export_pdf == TRUE) {
   
   system(paste0("pdfcrop figs/", filename, ".pdf figs/", filename, ".pdf"))
 }
+
+p
 ```
 
 ### Natural Indirect Effect ($\delta(0)$)
@@ -1105,7 +1105,6 @@ p <- ggplot(
   scale_x_discrete(
     labels = ifelse(unique(data_plot$a) %% .5 == 0, unique(data_plot$a), "")
   )
-p
 
 if (export_pdf == TRUE) {
   filename <- "gaussian-mc-alpha-delta0"
@@ -1118,6 +1117,7 @@ if (export_pdf == TRUE) {
   
   system(paste0("pdfcrop figs/", filename, ".pdf figs/", filename, ".pdf"))
 }
+p
 ```
 
 ### Natural Indirect Effect ($\delta(1)$)
@@ -1241,6 +1241,8 @@ ggplot(
   scale_x_discrete(
     labels = ifelse(unique(data_plot$a) %% .5 == 0, unique(data_plot$a), "")
   )
+  
+p
 ```
 
 ### Natural Direct Effect ($\zeta(1)$)
@@ -1313,7 +1315,6 @@ p <- ggplot(
   scale_x_discrete(
     labels = ifelse(unique(data_plot$a) %% .5 == 0, unique(data_plot$a), "")
   )
-p
 
 if (export_pdf == TRUE) {
   filename <- "gaussian-mc-alpha-zeta1"
@@ -1326,8 +1327,185 @@ if (export_pdf == TRUE) {
   
   system(paste0("pdfcrop figs/", filename, ".pdf figs/", filename, ".pdf"))
 }
+
+p
 ```
 :::
+
+
+A more condensed figure, which focuses on $\bar{\delta}(0)$,  $\bar{\zeta}(1)$, and $\bar{\tau}$.
+
+```{r}
+#| fig-width: 8
+#| fig-height: 8
+#| code-fold: true
+#| code-summary: Codes to create the Figure.
+a1 <- 2
+a2 <- -1.5
+export_pdf <- FALSE
+
+x_lab <- "Distance $\\alpha$"
+y_lab <- "Estimation error"
+metrics_lab <- c("$\\bar{\\delta}(0)$", "$\\bar{\\zeta}(1)$", "$\\bar{\\tau}$")
+
+if (export_pdf == FALSE) {
+  x_lab <- latex2exp::TeX(x_lab)
+  y_lab <- latex2exp::TeX(y_lab)
+  metrics_lab <- latex2exp::TeX(metrics_lab)
+}
+
+data_plot_tau <- res_sim |> 
+  dplyr::select(
+    n0, n1, seed, a, mu0, mu1,
+    tot_effect_med, tot_effect_ot, tot_effect_tmatch,
+    tot_effect_skh, tot_effect_sot_12, tot_effect_sot_21
+  ) |> 
+  pivot_longer(
+    cols = c(
+      tot_effect_med, tot_effect_ot, tot_effect_tmatch,
+      tot_effect_skh, tot_effect_sot_12, tot_effect_sot_21
+    ), 
+    names_to = "type", values_to = "tau"
+  ) |> 
+  mutate(
+    type = factor(
+      type,
+      levels = c(
+        "tot_effect_med", "tot_effect_ot", "tot_effect_tmatch",
+        "tot_effect_skh", "tot_effect_sot_12", "tot_effect_sot_21"
+      ),
+      labels = c("CM", "OT", "OT-M", "SKH", "ST(1)", "ST(2)")
+    ),
+    dist_to_causal_effect = (a1+a2) * (a*mu1 - a*mu0) + 3 - tau
+  )
+
+data_plot_delta0 <- res_sim |> 
+  dplyr::select(
+    n0, n1, seed, a, mu0, mu1,
+    delta_0_med, delta_0_ot, delta_0_tmatch,
+    delta_0_skh, delta_0_sot_12, delta_0_sot_21
+  ) |> 
+  pivot_longer(
+    cols = c(
+      delta_0_med, delta_0_ot, delta_0_tmatch,
+      delta_0_skh, delta_0_sot_12, delta_0_sot_21
+    ), 
+    names_to = "type", values_to = "val"
+  ) |> 
+  mutate(
+    type = factor(
+      type,
+      levels = c(
+        "delta_0_med", "delta_0_ot", "delta_0_tmatch",
+        "delta_0_skh", "delta_0_sot_12", "delta_0_sot_21"
+      ),
+      labels = c("CM", "OT", "OT-M", "SKH", "ST(1)", "ST(2)")
+    ),
+    dist_to_theo_val = ((a1+a2)*(mu1-mu0)) - val
+  )
+
+data_plot_zeta1 <- res_sim |> 
+  dplyr::select(
+    n0, n1, seed, a, mu0, mu1,
+    zeta_1_med, zeta_1_ot, zeta_1_tmatch,
+    zeta_1_skh, zeta_1_sot_12, zeta_1_sot_21
+  ) |> 
+  pivot_longer(
+    cols = c(
+      zeta_1_med, zeta_1_ot, zeta_1_tmatch,
+      zeta_1_skh, zeta_1_sot_12, zeta_1_sot_21), 
+    names_to = "type", values_to = "val"
+  ) |> 
+  mutate(
+    type = factor(
+      type,
+      levels = c(
+        "zeta_1_med", "zeta_1_ot", "zeta_1_tmatch",
+        "zeta_1_skh", "zeta_1_sot_12", "zeta_1_sot_21"
+      ),
+      labels = c("CM", "OT", "OT-M", "SKH", "ST(1)", "ST(2)")
+    ),
+    dist_to_theo_val = 3 - val
+  )
+
+data_plot <- data_plot_tau |> 
+  rename(dist_tau = dist_to_causal_effect) |> 
+  left_join(
+    data_plot_delta0 |> 
+      rename(
+        delta0 = val,
+        dist_delta0 = dist_to_theo_val
+      ),
+    by = c("n0", "n1", "seed", "a", "mu0", "mu1", "type")
+  ) |> 
+  left_join(
+    data_plot_zeta1 |> 
+      rename(
+        zeta1 = val,
+        dist_zeta1 = dist_to_theo_val
+      ),
+    by = c("n0", "n1", "seed", "a", "mu0", "mu1", "type")
+  ) |> 
+filter(a %in% seq(0, 2, by = .2))
+
+p <- ggplot(
+  data = data_plot |> select(-tau, -delta0, -zeta1) |> 
+    pivot_longer(
+      cols = c(dist_tau, dist_delta0, dist_zeta1), 
+      names_to = "metric", 
+      values_to = "dist"
+    ) |> 
+    mutate(
+      metric = factor(
+        metric,
+        levels = c("dist_delta0", "dist_zeta1", "dist_tau"),
+        labels = metrics_lab
+      )
+    ),
+  mapping = aes(x = factor(a), y = dist)
+) +
+  geom_violin(
+    mapping = aes(fill = type)
+  ) +
+  geom_hline(yintercept = 0, colour = "darkred", linetype = "dashed") +
+  theme_paper() +
+  facet_grid(type ~ metric, scales = "free_x") +
+  scale_fill_manual(
+    NULL,
+    values = c(
+      "CM" = "#56B4E9",
+      "OT" = colour_methods[["OT"]], 
+      "OT-M" = colour_methods[["OT-M"]], 
+      "SKH" = colour_methods[["skh"]], 
+      "ST(1)" =  colour_methods[["seq_1"]],
+      "ST(2)" =  colour_methods[["seq_2"]]
+    ),
+    guide = "none",
+  ) +
+  theme(legend.position = "bottom") +
+  labs(
+    x = x_lab,
+    y = y_lab,
+  ) +
+  scale_x_discrete(
+    labels = ifelse(unique(data_plot$a) %% .5 == 0, unique(data_plot$a), "")
+  )
+
+if (export_pdf == TRUE) {
+  filename <- "gaussian-mc-alpha"
+  ggplot2_to_pdf(
+    plot = p + theme(panel.spacing = unit(0.4, "lines")),
+    filename = filename, path = "figs/", 
+    width = 3.3, height = 6,
+    crop = TRUE
+  )
+  
+  system(paste0("pdfcrop figs/", filename, ".pdf figs/", filename, ".pdf"))
+}
+
+p
+```
+
 
 
 ## Varying the Proportion of 0s and 1s
@@ -1645,7 +1823,6 @@ p <- ggplot(
       (unique(data_plot$prop_0)*100) %% 20 == 0, 
       yes = unique(data_plot$prop_0), no = "")
   )
-p
 
 if (export_pdf == TRUE) {
   filename <- "gaussian-mc-prop-tau"
@@ -1658,6 +1835,8 @@ if (export_pdf == TRUE) {
   
   system(paste0("pdfcrop figs/", filename, ".pdf figs/", filename, ".pdf"))
 }
+
+p
 ```
 
 ### Natural Indirect Effect ($\delta(0)$)
@@ -1736,7 +1915,6 @@ p <- ggplot(
       (unique(data_plot$prop_0)*100) %% 20 == 0, 
       yes = unique(data_plot$prop_0), no = "")
   )
-p
 
 if (export_pdf == TRUE) {
   filename <- "gaussian-mc-prop-delta0"
@@ -1750,6 +1928,7 @@ if (export_pdf == TRUE) {
   system(paste0("pdfcrop figs/", filename, ".pdf figs/", filename, ".pdf"))
 }
 
+p
 ```
 
 ### Natural Indirect Effect ($\delta(1)$)
@@ -1888,7 +2067,7 @@ ggplot(
 #| code-summary: Codes to create the Figure.
 a1 <- 2
 a2 <- -1.5
-export_pdf <- TRUE
+export_pdf <- FALSE 
 
 x_lab <- "Proportion of untreated"
 y_lab <- "Distance to $\\bar\\zeta(1)$"
@@ -1953,7 +2132,6 @@ p <- ggplot(
       (unique(data_plot$prop_0)*100) %% 20 == 0, 
       yes = unique(data_plot$prop_0), no = "")
   )
-p
 
 if (export_pdf == TRUE) {
   filename <- "gaussian-mc-prop-zeta1"
@@ -1967,7 +2145,183 @@ if (export_pdf == TRUE) {
   system(paste0("pdfcrop figs/", filename, ".pdf figs/", filename, ".pdf"))
 }
 
+p
 ```
 :::
 
 
+
+A more condensed figure, which focuses on $\bar{\delta}(0)$,  $\bar{\zeta}(1)$, and $\bar{\tau}$.
+
+```{r}
+#| fig-width: 8
+#| fig-height: 8
+#| code-fold: true
+#| code-summary: Codes to create the Figure.
+a1 <- 2
+a2 <- -1.5
+export_pdf <- FALSE
+
+x_lab <- "Proportion of untreated ($\\%$)"
+y_lab <- "Estimation error"
+metrics_lab <- c("$\\bar{\\delta}(0)$", "$\\bar{\\zeta}(1)$", "$\\bar{\\tau}$")
+
+if (export_pdf == FALSE) {
+  x_lab <- latex2exp::TeX(x_lab)
+  y_lab <- latex2exp::TeX(y_lab)
+  metrics_lab <- latex2exp::TeX(metrics_lab)
+}
+
+data_plot_tau <- res_sim_prop |> 
+  dplyr::select(
+    n0, n1, seed, a, mu0, mu1, prop_0,
+    tot_effect_med, tot_effect_ot, tot_effect_tmatch,
+    tot_effect_skh, tot_effect_sot_12, tot_effect_sot_21
+  ) |> 
+  pivot_longer(
+    cols = c(
+      tot_effect_med, tot_effect_ot, tot_effect_tmatch,
+      tot_effect_skh, tot_effect_sot_12, tot_effect_sot_21
+    ), 
+    names_to = "type", values_to = "tau"
+  ) |> 
+  mutate(
+    type = factor(
+      type,
+      levels = c(
+        "tot_effect_med", "tot_effect_ot", "tot_effect_tmatch",
+        "tot_effect_skh", "tot_effect_sot_12", "tot_effect_sot_21"
+      ),
+      labels = c("CM", "OT", "OT-M", "SKH", "ST(1)", "ST(2)")
+    ),
+    dist_to_causal_effect = (a1+a2) * (a*mu1 - a*mu0) + 3 - tau
+  )
+
+data_plot_delta0 <- res_sim_prop |> 
+  dplyr::select(
+    n0, n1, seed, a, mu0, mu1, prop_0,
+    delta_0_med, delta_0_ot, delta_0_tmatch,
+    delta_0_skh, delta_0_sot_12, delta_0_sot_21
+  ) |> 
+  pivot_longer(
+    cols = c(
+      delta_0_med, delta_0_ot, delta_0_tmatch,
+      delta_0_skh, delta_0_sot_12, delta_0_sot_21
+    ), 
+    names_to = "type", values_to = "val"
+  ) |> 
+  mutate(
+    type = factor(
+      type,
+      levels = c(
+        "delta_0_med", "delta_0_ot", "delta_0_tmatch",
+        "delta_0_skh", "delta_0_sot_12", "delta_0_sot_21"
+      ),
+      labels = c("CM", "OT", "OT-M", "SKH", "ST(1)", "ST(2)")
+    ),
+    dist_to_theo_val = ((a1+a2)*(mu1-mu0)) - val
+  )
+
+data_plot_zeta1 <- res_sim_prop |> 
+  dplyr::select(
+    n0, n1, seed, a, mu0, mu1, prop_0,
+    zeta_1_med, zeta_1_ot, zeta_1_tmatch,
+    zeta_1_skh, zeta_1_sot_12, zeta_1_sot_21
+  ) |> 
+  pivot_longer(
+    cols = c(
+      zeta_1_med, zeta_1_ot, zeta_1_tmatch,
+      zeta_1_skh, zeta_1_sot_12, zeta_1_sot_21), 
+    names_to = "type", values_to = "val"
+  ) |> 
+  mutate(
+    type = factor(
+      type,
+      levels = c(
+        "zeta_1_med", "zeta_1_ot", "zeta_1_tmatch",
+        "zeta_1_skh", "zeta_1_sot_12", "zeta_1_sot_21"
+      ),
+      labels = c("CM", "OT", "OT-M", "SKH", "ST(1)", "ST(2)")
+    ),
+    dist_to_theo_val = 3 - val
+  )
+
+data_plot <- data_plot_tau |> 
+  rename(dist_tau = dist_to_causal_effect) |> 
+  left_join(
+    data_plot_delta0 |> 
+      rename(
+        delta0 = val,
+        dist_delta0 = dist_to_theo_val
+      ),
+    by = c("n0", "n1", "seed", "a", "mu0", "mu1", "type", "prop_0")
+  ) |> 
+  left_join(
+    data_plot_zeta1 |> 
+      rename(
+        zeta1 = val,
+        dist_zeta1 = dist_to_theo_val
+      ),
+    by = c("n0", "n1", "seed", "a", "mu0", "mu1", "type", "prop_0")
+  )
+
+data_plot <- data_plot |> filter(prop_0 %in% seq(.05, .95, by =.1))
+
+
+
+p <- ggplot(
+  data = data_plot |> select(-tau, -delta0, -zeta1) |> 
+    pivot_longer(
+      cols = c(dist_tau, dist_delta0, dist_zeta1), 
+      names_to = "metric", 
+      values_to = "dist"
+    ) |> 
+    mutate(
+      metric = factor(
+        metric,
+        levels = c("dist_delta0", "dist_zeta1", "dist_tau"),
+        labels = metrics_lab
+      )
+    ),
+  mapping = aes(x = factor(prop_0), y = dist)
+) +
+  geom_violin(
+    mapping = aes(fill = type)
+  ) +
+  geom_hline(yintercept = 0, colour = "darkred", linetype = "dashed") +
+  theme_paper() +
+  facet_grid(type ~ metric, scales = "free_x") +
+  scale_fill_manual(
+    NULL,
+    values = c(
+      "CM" = "#56B4E9",
+      "OT" = colour_methods[["OT"]], 
+      "OT-M" = colour_methods[["OT-M"]], 
+      "SKH" = colour_methods[["skh"]], 
+      "ST(1)" =  colour_methods[["seq_1"]],
+      "ST(2)" =  colour_methods[["seq_2"]]
+    ),
+    guide = "none",
+  ) +
+  theme(legend.position = "bottom") +
+  labs(
+    x = x_lab,
+    y = y_lab,
+  ) +
+  scale_x_discrete(
+    labels = 100*unique(data_plot$prop_0)
+  )
+
+if (export_pdf == TRUE) {
+  filename <- "gaussian-mc-prop"
+  ggplot2_to_pdf(
+    plot = p + theme(panel.spacing = unit(0.4, "lines")),
+    filename = filename, path = "figs/", 
+    width = 3.3, height = 6,
+    crop = TRUE
+  )
+  
+  system(paste0("pdfcrop figs/", filename, ".pdf figs/", filename, ".pdf"))
+}
+p
+```
