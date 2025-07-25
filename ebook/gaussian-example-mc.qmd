@@ -5,17 +5,15 @@
 
 ## Objectives
 
-In this chapter, XXX
+In this chapter, we use the same data-generating process described in [Chapter -@sec-motivation-gaussian] and run a series of Monte Carlo experiments. We consider two types of scenarios:
 
+1. We change the distance between the means of the Gaussian distributions in groups 0 and 1. As this distance increases, the overlap between the two groups decreases.
+
+2. We let the proportion of individuals in group 0 relative to group 1 vary. This simulated different levels of class imbalance.
 
 
 :::
 
-:::{.callout-important}
-
-These are preliminary results with only 9 replications per simulation. The MC simulations will be run this evening.
-
-:::
 
 ```{r package-settings}
 #| warning: false
@@ -662,7 +660,180 @@ sim_f <- function(n0 = 250,
 
 ## Varying the Distance Between the Means
 
-We make the distance between the means of the Gaussian distributions of the two groups increase. With $\boldsymbol{\mu}_0 = \begin{pmatrix}-1\\-1\end{pmatrix}$ and $\boldsymbol{\mu}_1 = \begin{pmatrix}1\\1\end{pmatrix}$, the distance is equal to $1$. We apply a scalar coefficient $a\geq 0$ to the means to increase that distance: $a\boldsymbol{\mu}_0$ and $a\boldsymbol{\mu}_1$. We make $a$ vary from 0 to 1 by steps of .1. When $a=0$, the distance is equal to $0$, when $a=2$, the distance is equal to $2$.
+We make the distance between the means of the Gaussian distributions of the two groups increase. With $\boldsymbol{\mu}_0 = \begin{pmatrix}-1\\-1\end{pmatrix}$ and $\boldsymbol{\mu}_1 = \begin{pmatrix}1\\1\end{pmatrix}$, the distance is equal to $1$. We apply a scalar coefficient $\alpha\geq 0$ to the means to increase that distance: $a\boldsymbol{\mu}_0$ and $a\boldsymbol{\mu}_1$. We make $\alpha$ vary from 0 to 1 by steps of .1. When $\alpha=0$, the distance is equal to $0$, when $\alpha=2$, the distance is equal to $2$.
+
+A visual representation of the samples that can be drawn from the DGP with three values of $\alpha$ is provided in @fig-gaussian-example-alpha.
+
+```{r}
+#| code-fold: true
+#| code-summary: Codes to create the Figure.
+#| warning: false
+#| message: false
+#| fig-cap: Example of simulated data for three values for the distance between the means of the Gaussian distributions in groups 0 and 1 ($\alpha$).
+#| label: fig-gaussian-example-alpha
+library(tikzDevice)
+export_tikz <- FALSE
+
+if (export_tikz == TRUE) {
+  filename <- "gaussian-example-alpha"
+  tikz(paste0("figs/", filename, ".tex"), width = 2.2, height = 1)
+}
+
+
+draw_ellipse <- function(mu, 
+                         sigma, 
+                         col = "black", 
+                         lty = 1, 
+                         lwd = 1, 
+                         level = 0.95, 
+                         ...) {
+  
+  angles <- seq(0, 2 * pi, length.out = 100)
+  vals <- sqrt(
+    qchisq(level, df = 2)) * t(chol(sigma)) %*% rbind(cos(angles), sin(angles)
+    )
+  lines(mu[1] + vals[1, ], mu[2] + vals[2, ], col = col, lty = lty, lwd = lwd, ...)
+  
+}
+
+set.seed(123)
+
+mu0 <- -1
+mu1 <- +1
+r0 <- +.7
+r1 <- -.5
+
+# Generate data with alpha=0, alpha=1, alpha=2
+data_alpha_0 <- gen_data(a = 0, mu0 = mu0, mu1 = mu1, r0 = r0, r1 = r1)
+data_alpha_1 <- gen_data(a = 1, mu0 = mu0, mu1 = mu1, r0 = r0, r1 = r1)
+data_alpha_2 <- gen_data(a = 2, mu0 = mu0, mu1 = mu1, r0 = r0, r1 = r1)
+
+
+par(mar = c(2.1, 2.1, 2.1, 0.1), mfrow = c(1, 3))
+x_lim <- c(-4, 4)
+y_lim <- c(-4, 4)
+cex_pts <- .4
+
+# With alpha=0----
+a <- 0
+
+x_lab <- "$\\alpha = 0$"
+if (export_tikz == FALSE) x_lab <- latex2exp::TeX(x_lab)
+
+plot(
+  data_alpha_0$X1[data_alpha_0$A == 0], 
+  data_alpha_0$X2[data_alpha_0$A == 0], 
+  pch = 16, 
+  cex = cex_pts,
+  col = adjustcolor(colGpe0, alpha = .3), 
+  xlim = x_lim, ylim = y_lim, 
+  xlab = "", ylab = "",
+  main = x_lab,
+  family = font_family,
+  axes = FALSE
+)
+axis(1, at = -3:3)
+axis(2, at = -3:3)
+title(xlab = "X1", ylab="X2", line=2, cex.lab=1.2, family = font_family)
+points(
+  data_alpha_0$X1[data_alpha_0$A == 1], 
+  data_alpha_0$X2[data_alpha_0$A == 1], 
+  col = adjustcolor(colGpe1, alpha = .3), pch = 16, cex = cex_pts
+)
+
+# True mean and covariance (scaled by 'a')
+Mu0 <- rep(a * mu0, 2)
+Mu1 <- rep(a * mu1, 2)
+Sig0 <- matrix(c(1, r0, r0, 1), 2, 2)
+Sig1 <- matrix(c(1, r1, r1, 1), 2, 2)
+
+
+# Add ellipses
+draw_ellipse(Mu0, Sig0, col = colGpe0, lty = 2)
+draw_ellipse(Mu1, Sig1, col = colGpe1, lty = 2)
+
+# With alpha=1----
+a <- 1
+
+x_lab <- "$\\alpha = 1$"
+if (export_tikz == FALSE) x_lab <- latex2exp::TeX(x_lab)
+
+plot(
+  data_alpha_1$X1[data_alpha_1$A == 0], 
+  data_alpha_1$X2[data_alpha_1$A == 0], 
+  pch = 16, cex = cex_pts,
+  col = adjustcolor(colGpe0, alpha = .3), 
+  xlim = x_lim, ylim = y_lim, 
+  xlab = "", ylab = "",
+  main = x_lab,
+  family = font_family,
+  axes = FALSE
+)
+axis(1, at = -3:3)
+axis(2, at = -3:3)
+title(xlab = "X1", ylab="X2", line=2, cex.lab=1.2, family = font_family)
+points(
+  data_alpha_1$X1[data_alpha_1$A == 1], 
+  data_alpha_1$X2[data_alpha_1$A == 1], 
+  col = adjustcolor(colGpe1, alpha = .3), pch = 16, cex = cex_pts
+)
+
+# True mean and covariance (scaled by 'a')
+Mu0 <- rep(a * mu0, 2)
+Mu1 <- rep(a * mu1, 2)
+Sig0 <- matrix(c(1, r0, r0, 1), 2, 2)
+Sig1 <- matrix(c(1, r1, r1, 1), 2, 2)
+
+# Add ellipses
+draw_ellipse(Mu0, Sig0, col = colGpe0, lty = 2)
+draw_ellipse(Mu1, Sig1, col = colGpe1, lty = 2)
+
+# With alpha=2----
+a <- 2
+
+x_lab <- "$\\alpha = 2$"
+if (export_tikz == FALSE) x_lab <- latex2exp::TeX(x_lab)
+
+plot(
+  data_alpha_2$X1[data_alpha_2$A == 0], 
+  data_alpha_2$X2[data_alpha_2$A == 0], 
+  pch = 16, cex = cex_pts, 
+  col = adjustcolor(colGpe0, alpha = .3), 
+  xlim = x_lim, ylim = y_lim, 
+  xlab = "", ylab = "",
+  main = x_lab,
+  family = font_family,
+  axes = FALSE
+)
+axis(1, at = -3:3)
+axis(2, at = -3:3)
+title(xlab = "X1", ylab="X2", line=2, cex.lab=1.2, family = font_family)
+points(
+  data_alpha_2$X1[data_alpha_2$A == 1], 
+  data_alpha_2$X2[data_alpha_2$A == 1], 
+  col = adjustcolor(colGpe1, alpha = .3), pch = 16, cex = cex_pts
+)
+
+# True mean and covariance (scaled by 'a')
+Mu0 <- rep(a * mu0, 2)
+Mu1 <- rep(a * mu1, 2)
+Sig0 <- matrix(c(1, r0, r0, 1), 2, 2)
+Sig1 <- matrix(c(1, r1, r1, 1), 2, 2)
+
+# Add ellipses
+draw_ellipse(Mu0, Sig0, col = colGpe0, lty = 2)
+draw_ellipse(Mu1, Sig1, col = colGpe1, lty = 2)
+
+if (export_tikz == TRUE) {
+  dev.off()
+  plot_to_pdf(
+    filename = filename, path = "./figs/", keep_tex = FALSE, crop = FALSE
+  )
+}
+
+```
+
+
 
 We define a grid with the different simulations.
 ```{r}
@@ -679,9 +850,11 @@ grid_params <- expand_grid(
 )
 ```
 
-The simulations can be run in parallel, as follows.
+The simulations can be run in parallel.
 
 ```{r mc-simul, eval=FALSE}
+#| code-fold: true
+#| code-summary: The codes to run the simulations
 # This chunk takes about XX minutes to run.
 # We do not evaluate when compiling the document.
 # Instead, we load previously obtained results.
@@ -707,7 +880,10 @@ clusterExport(
   )
 )
 
-res_sim <- pbapply::pblapply(1:nrow(grid_params), function(i) {
+# For an unknown reason, there seems to be an issue with performing this in 
+# one go. Let us divide the task into two.
+
+res_sim_1 <- pbapply::pblapply(1:2100, function(i) {
   
   grid_params_current <- grid_params[i, ]
   
@@ -728,8 +904,34 @@ res_sim <- pbapply::pblapply(1:nrow(grid_params), function(i) {
   )
 }, cl = cl)
 
+res_sim_2 <- pbapply::pblapply(2101:nrow(grid_params), function(i) {
+  
+  grid_params_current <- grid_params[i, ]
+  
+  n0 <- grid_params_current$n0
+  n1 <- grid_params_current$n1
+  mu0 <- grid_params_current$mu0
+  mu1 <- grid_params_current$mu1
+  r0 <- grid_params_current$r0
+  r1 <- grid_params_current$r1
+  a <- grid_params_current$a
+  seed <- grid_params_current$seed
+  
+  sim_f(
+    n0 = n0, n1 = n1, 
+    mu0 = mu0, mu1 = mu1, 
+    r0 = r0, r1 = r1, 
+    a = a, seed = seed
+  )
+}, cl = cl)
+
+res_sim_1 <- list_rbind(res_sim_1)
+res_sim_2 <- list_rbind(res_sim_2)
+
+res_sim <- res_sim_1 |> bind_rows(res_sim_2)
+
 stopCluster(cl)
-res_sim <- list_rbind(res_sim)
+
 
 save(res_sim, file = "../output/res_sim-gaussian-mc.rda")
 ```
@@ -750,6 +952,16 @@ load("../output/res_sim-gaussian-mc.rda")
 #| code-summary: Codes to create the Figure.
 a1 <- 2
 a2 <- -1.5
+export_pdf <- FALSE
+
+x_lab <- "Distance $\\alpha$"
+y_lab <- "Distance to $\\bar\\tau$"
+
+if (export_pdf == FALSE) {
+  x_lab <- latex2exp::TeX(x_lab)
+  y_lab <- latex2exp::TeX(y_lab)
+}
+
 data_plot <- res_sim |> 
   dplyr::select(
     n0, n1, seed, a, mu0, mu1,
@@ -774,7 +986,8 @@ data_plot <- res_sim |>
     ),
     dist_to_causal_effect = (a1+a2) * (a*mu1 - a*mu0) + 3 - tau
   )
-ggplot(
+
+p <- ggplot(
   data = data_plot,
   mapping = aes(x = factor(a), y = dist_to_causal_effect)
 ) +
@@ -798,12 +1011,26 @@ ggplot(
   ) +
   theme(legend.position = "bottom") +
   labs(
-    x = latex2exp::TeX("Distance $\\alpha$"),
-    y = "Distance to theoretical total causal effect",
+    x = x_lab,
+    y = y_lab,
   ) +
   scale_x_discrete(
     labels = ifelse(unique(data_plot$a) %% .5 == 0, unique(data_plot$a), "")
   )
+
+p
+
+if (export_pdf == TRUE) {
+  filename <- "gaussian-mc-alpha-tau"
+  ggplot2_to_pdf(
+    plot = p + theme(panel.spacing = unit(0.4, "lines")),
+    filename = filename, path = "figs/", 
+    width = 3.3, height = 3.5,
+    crop = TRUE
+  )
+  
+  system(paste0("pdfcrop figs/", filename, ".pdf figs/", filename, ".pdf"))
+}
 ```
 
 ### Natural Indirect Effect ($\delta(0)$)
@@ -813,6 +1040,16 @@ ggplot(
 #| fig-height: 6
 #| code-fold: true
 #| code-summary: Codes to create the Figure.
+export_pdf <- FALSE
+
+x_lab <- "Distance $\\alpha$"
+y_lab <- "Distance to $\\bar\\delta(0)$"
+
+if (export_pdf == FALSE) {
+  x_lab <- latex2exp::TeX(x_lab)
+  y_lab <- latex2exp::TeX(y_lab)
+}
+
 data_plot <- res_sim |> 
   dplyr::select(
     n0, n1, seed, a, mu0, mu1,
@@ -837,7 +1074,8 @@ data_plot <- res_sim |>
     ),
     dist_to_theo_val = ((a1+a2)*(mu1-mu0)) - val
   )
-ggplot(
+
+p <- ggplot(
   data = data_plot,
   mapping = aes(x = factor(a), y = dist_to_theo_val)
 ) +
@@ -856,16 +1094,30 @@ ggplot(
       "SKH" = colour_methods[["skh"]], 
       "ST(1)" =  colour_methods[["seq_1"]],
       "ST(2)" =  colour_methods[["seq_2"]]
-    )
+    ),
+    guide = "none"
   ) +
   theme(legend.position = "bottom") +
   labs(
-    x = latex2exp::TeX("Distance $\\alpha$"),
-    y = "Distance to theoretical natural indirect effect",
+    x = x_lab,
+    y = y_lab,
   ) +
   scale_x_discrete(
     labels = ifelse(unique(data_plot$a) %% .5 == 0, unique(data_plot$a), "")
   )
+p
+
+if (export_pdf == TRUE) {
+  filename <- "gaussian-mc-alpha-delta0"
+  ggplot2_to_pdf(
+    plot = p + theme(panel.spacing = unit(0.4, "lines")),
+    filename = filename, path = "figs/", 
+    width = 3.3, height = 3.5,
+    crop = TRUE
+  )
+  
+  system(paste0("pdfcrop figs/", filename, ".pdf figs/", filename, ".pdf"))
+}
 ```
 
 ### Natural Indirect Effect ($\delta(1)$)
@@ -998,6 +1250,16 @@ ggplot(
 #| fig-height: 6
 #| code-fold: true
 #| code-summary: Codes to create the Figure.
+export_pdf <- FALSE
+
+x_lab <- "Distance $\\alpha$"
+y_lab <- "Distance to $\\bar\\zeta(1)$"
+
+if (export_pdf == FALSE) {
+  x_lab <- latex2exp::TeX(x_lab)
+  y_lab <- latex2exp::TeX(y_lab)
+}
+
 data_plot <- res_sim |> 
   dplyr::select(
     n0, n1, seed, a, mu0, mu1,
@@ -1006,8 +1268,8 @@ data_plot <- res_sim |>
   ) |> 
   pivot_longer(
     cols = c(
-    zeta_1_med, zeta_1_ot, zeta_1_tmatch,
-    zeta_1_skh, zeta_1_sot_12, zeta_1_sot_21), 
+      zeta_1_med, zeta_1_ot, zeta_1_tmatch,
+      zeta_1_skh, zeta_1_sot_12, zeta_1_sot_21), 
     names_to = "type", values_to = "val"
   ) |> 
   mutate(
@@ -1021,7 +1283,7 @@ data_plot <- res_sim |>
     ),
     dist_to_theo_val = 3 - val
   )
-ggplot(
+p <- ggplot(
   data = data_plot,
   mapping = aes(x = factor(a), y = dist_to_theo_val)
 ) +
@@ -1045,12 +1307,25 @@ ggplot(
   ) +
   theme(legend.position = "bottom") +
   labs(
-    x = latex2exp::TeX("Distance $\\alpha$"),
-    y = "Distance to theoretical natural direct effect",
+    x = x_lab,
+    y = y_lab,
   ) +
   scale_x_discrete(
     labels = ifelse(unique(data_plot$a) %% .5 == 0, unique(data_plot$a), "")
   )
+p
+
+if (export_pdf == TRUE) {
+  filename <- "gaussian-mc-alpha-zeta1"
+  ggplot2_to_pdf(
+    plot = p + theme(panel.spacing = unit(0.4, "lines")),
+    filename = filename, path = "figs/", 
+    width = 3.3, height = 3.5,
+    crop = TRUE
+  )
+  
+  system(paste0("pdfcrop figs/", filename, ".pdf figs/", filename, ".pdf"))
+}
 ```
 :::
 
@@ -1058,6 +1333,156 @@ ggplot(
 ## Varying the Proportion of 0s and 1s
 
 In this section, we let the proportion of untreated/treated units vary from 5% of 0s to 95% of them. Note that we go back to the distance between the mean equal to 1, as in @sec-motivation-gaussian.
+
+A visual representation of the samples that can be drawn from the DGP with different proportions 0s is shown in @fig-gaussian-example-prop
+
+```{r}
+#| code-fold: true
+#| code-summary: Codes to create the Figure.
+#| warning: false
+#| message: false
+#| fig-cap: Example of simulated data for different proportions of 0s.
+#| label: fig-gaussian-example-prop
+
+
+set.seed(123)
+
+alpha <- 1
+mu0 <- -1
+mu1 <- +1
+r0 <- +.7
+r1 <- -.5
+
+# Generate data with alpha=0, alpha=1, alpha=2
+data_alpha_10 <- gen_data(
+  a = alpha, mu0 = mu0, mu1 = mu1, r0 = r0, r1 = r1,
+  n0 = 50, n1 = 450
+)
+data_alpha_50 <- gen_data(
+  a = alpha, mu0 = mu0, mu1 = mu1, r0 = r0, r1 = r1,
+  n0 = 25, n1 = 475
+)
+data_alpha_90 <- gen_data(
+  a = alpha, mu0 = mu0, mu1 = mu1, r0 = r0, r1 = r1,
+  n0 = 450, n1 = 50
+)
+
+
+par(mar = c(2.1, 2.1, 2.1, 0.1), mfrow = c(1, 3))
+x_lim <- c(-4, 4)
+y_lim <- c(-4, 4)
+cex_pts <- .4
+
+# With 10%----
+a <- 0
+
+x_lab <- "Prop. 0s: $10\\%$"
+if (export_tikz == FALSE) x_lab <- latex2exp::TeX(x_lab)
+
+plot(
+  data_alpha_10$X1[data_alpha_10$A == 0], 
+  data_alpha_10$X2[data_alpha_10$A == 0], 
+  pch = 16, 
+  cex = cex_pts,
+  col = adjustcolor(colGpe0, alpha = .3), 
+  xlim = x_lim, ylim = y_lim, 
+  xlab = "", ylab = "",
+  main = x_lab,
+  family = font_family,
+  axes = FALSE
+)
+axis(1, at = -3:3)
+axis(2, at = -3:3)
+title(xlab = "X1", ylab="X2", line=2, cex.lab=1.2, family = font_family)
+points(
+  data_alpha_10$X1[data_alpha_10$A == 1], 
+  data_alpha_10$X2[data_alpha_10$A == 1], 
+  col = adjustcolor(colGpe1, alpha = .3), pch = 16, cex = cex_pts
+)
+
+# True mean and covariance (scaled by 'a')
+Mu0 <- rep(alpha * mu0, 2)
+Mu1 <- rep(alpha * mu1, 2)
+Sig0 <- matrix(c(1, r0, r0, 1), 2, 2)
+Sig1 <- matrix(c(1, r1, r1, 1), 2, 2)
+
+
+# Add ellipses
+draw_ellipse(Mu0, Sig0, col = colGpe0, lty = 2)
+draw_ellipse(Mu1, Sig1, col = colGpe1, lty = 2)
+
+# With 50%----
+a <- 1
+
+x_lab <- "Prop. 0s: $50\\%$"
+if (export_tikz == FALSE) x_lab <- latex2exp::TeX(x_lab)
+
+plot(
+  data_alpha_50$X1[data_alpha_50$A == 0], 
+  data_alpha_50$X2[data_alpha_50$A == 0], 
+  pch = 16, cex = cex_pts,
+  col = adjustcolor(colGpe0, alpha = .3), 
+  xlim = x_lim, ylim = y_lim, 
+  xlab = "", ylab = "",
+  main = x_lab,
+  family = font_family,
+  axes = FALSE
+)
+axis(1, at = -3:3)
+axis(2, at = -3:3)
+title(xlab = "X1", ylab="X2", line=2, cex.lab=1.2, family = font_family)
+points(
+  data_alpha_50$X1[data_alpha_50$A == 1], 
+  data_alpha_50$X2[data_alpha_50$A == 1], 
+  col = adjustcolor(colGpe1, alpha = .3), pch = 16, cex = cex_pts
+)
+
+# True mean and covariance (scaled by 'a')
+Mu0 <- rep(alpha * mu0, 2)
+Mu1 <- rep(alpha * mu1, 2)
+Sig0 <- matrix(c(1, r0, r0, 1), 2, 2)
+Sig1 <- matrix(c(1, r1, r1, 1), 2, 2)
+
+# Add ellipses
+draw_ellipse(Mu0, Sig0, col = colGpe0, lty = 2)
+draw_ellipse(Mu1, Sig1, col = colGpe1, lty = 2)
+
+# With 90%----
+a <- 2
+
+x_lab <- "Prop. 0s: $90\\%$"
+if (export_tikz == FALSE) x_lab <- latex2exp::TeX(x_lab)
+
+plot(
+  data_alpha_90$X1[data_alpha_90$A == 0], 
+  data_alpha_90$X2[data_alpha_90$A == 0], 
+  pch = 16, cex = cex_pts, 
+  col = adjustcolor(colGpe0, alpha = .3), 
+  xlim = x_lim, ylim = y_lim, 
+  xlab = "", ylab = "",
+  main = x_lab,
+  family = font_family,
+  axes = FALSE
+)
+axis(1, at = -3:3)
+axis(2, at = -3:3)
+title(xlab = "X1", ylab="X2", line=2, cex.lab=1.2, family = font_family)
+points(
+  data_alpha_90$X1[data_alpha_90$A == 1], 
+  data_alpha_90$X2[data_alpha_90$A == 1], 
+  col = adjustcolor(colGpe1, alpha = .3), pch = 16, cex = cex_pts
+)
+
+# True mean and covariance (scaled by 'a')
+Mu0 <- rep(alpha * mu0, 2)
+Mu1 <- rep(alpha * mu1, 2)
+Sig0 <- matrix(c(1, r0, r0, 1), 2, 2)
+Sig1 <- matrix(c(1, r1, r1, 1), 2, 2)
+
+# Add ellipses
+draw_ellipse(Mu0, Sig0, col = colGpe0, lty = 2)
+draw_ellipse(Mu1, Sig1, col = colGpe1, lty = 2)
+```
 
 We define a grid with the different simulations.
 ```{r define-grid_params-prop}
@@ -1075,6 +1500,8 @@ grid_params <- expand_grid(
 The simulations can be run in parallel, as follows.
 
 ```{r mc-simul-prop, eval=FALSE}
+#| code-fold: true
+#| code-summary: The codes to run the simulations
 # This chunk takes about XX minutes to run.
 # We do not evaluate when compiling the document.
 # Instead, we load previously obtained results.
@@ -1151,6 +1578,16 @@ load("../output/res_sim_prop-gaussian-mc.rda")
 #| code-summary: Codes to create the Figure.
 a1 <- 2
 a2 <- -1.5
+export_pdf <- FALSE
+
+x_lab <- "Proportion of untreated"
+y_lab <- "Distance to $\\bar\\tau$"
+
+if (export_pdf == FALSE) {
+  x_lab <- latex2exp::TeX(x_lab)
+  y_lab <- latex2exp::TeX(y_lab)
+}
+
 data_plot <- res_sim_prop |> 
   dplyr::select(
     n0, n1, seed, a, mu0, mu1, prop_0,
@@ -1176,7 +1613,7 @@ data_plot <- res_sim_prop |>
     dist_to_causal_effect = (a1+a2) * (a*mu1 - a*mu0) + 3 - tau
   )
 
-ggplot(
+p <- ggplot(
   data = data_plot,
   mapping = aes(x = factor(prop_0), y = dist_to_causal_effect)
 ) +
@@ -1200,14 +1637,27 @@ ggplot(
   ) +
   theme(legend.position = "bottom") +
   labs(
-    x = "Proportion of 0s",
-    y = "Distance to theoretical total causal effect",
+    x = x_lab,
+    y = y_lab,
   ) + 
   scale_x_discrete(
     labels = ifelse(
-      (unique(data_plot$prop_0)*100) %% 10 == 0, 
+      (unique(data_plot$prop_0)*100) %% 20 == 0, 
       yes = unique(data_plot$prop_0), no = "")
   )
+p
+
+if (export_pdf == TRUE) {
+  filename <- "gaussian-mc-prop-tau"
+  ggplot2_to_pdf(
+    plot = p + theme(panel.spacing = unit(0.4, "lines")),
+    filename = filename, path = "figs/", 
+    width = 3.3, height = 3.5,
+    crop = TRUE
+  )
+  
+  system(paste0("pdfcrop figs/", filename, ".pdf figs/", filename, ".pdf"))
+}
 ```
 
 ### Natural Indirect Effect ($\delta(0)$)
@@ -1217,6 +1667,18 @@ ggplot(
 #| fig-height: 6
 #| code-fold: true
 #| code-summary: Codes to create the Figure.
+a1 <- 2
+a2 <- -1.5
+export_pdf <- FALSE
+
+x_lab <- "Proportion of untreated"
+y_lab <- "Distance to $\\bar\\delta(0)$"
+
+if (export_pdf == FALSE) {
+  x_lab <- latex2exp::TeX(x_lab)
+  y_lab <- latex2exp::TeX(y_lab)
+}
+
 data_plot <- res_sim_prop |> 
   dplyr::select(
     n0, n1, seed, a, mu0, mu1, prop_0,
@@ -1241,7 +1703,8 @@ data_plot <- res_sim_prop |>
     ),
     dist_to_theo_val = ((a1+a2)*(mu1-mu0)) - val
   )
-ggplot(
+
+p <- ggplot(
   data = data_plot,
   mapping = aes(x = factor(prop_0), y = dist_to_theo_val)
 ) +
@@ -1260,18 +1723,33 @@ ggplot(
       "SKH" = colour_methods[["skh"]], 
       "ST(1)" =  colour_methods[["seq_1"]],
       "ST(2)" =  colour_methods[["seq_2"]]
-    )
+    ),
+    guide = "none"
   ) +
   theme(legend.position = "bottom") +
   labs(
-    x = "Proportion of 0",
-    y = "Distance to theoretical natural indirect effect",
+    x = x_lab,
+    y = y_lab
   ) +
   scale_x_discrete(
     labels = ifelse(
-      (unique(data_plot$prop_0)*100) %% 10 == 0, 
+      (unique(data_plot$prop_0)*100) %% 20 == 0, 
       yes = unique(data_plot$prop_0), no = "")
   )
+p
+
+if (export_pdf == TRUE) {
+  filename <- "gaussian-mc-prop-delta0"
+  ggplot2_to_pdf(
+    plot = p + theme(panel.spacing = unit(0.4, "lines")),
+    filename = filename, path = "figs/", 
+    width = 3.3, height = 3.5,
+    crop = TRUE
+  )
+  
+  system(paste0("pdfcrop figs/", filename, ".pdf figs/", filename, ".pdf"))
+}
+
 ```
 
 ### Natural Indirect Effect ($\delta(1)$)
@@ -1408,6 +1886,18 @@ ggplot(
 #| fig-height: 6
 #| code-fold: true
 #| code-summary: Codes to create the Figure.
+a1 <- 2
+a2 <- -1.5
+export_pdf <- TRUE
+
+x_lab <- "Proportion of untreated"
+y_lab <- "Distance to $\\bar\\zeta(1)$"
+
+if (export_pdf == FALSE) {
+  x_lab <- latex2exp::TeX(x_lab)
+  y_lab <- latex2exp::TeX(y_lab)
+}
+
 data_plot <- res_sim_prop |> 
   dplyr::select(
     n0, n1, seed, a, mu0, mu1, prop_0,
@@ -1416,8 +1906,8 @@ data_plot <- res_sim_prop |>
   ) |> 
   pivot_longer(
     cols = c(
-    zeta_1_med, zeta_1_ot, zeta_1_tmatch,
-    zeta_1_skh, zeta_1_sot_12, zeta_1_sot_21), 
+      zeta_1_med, zeta_1_ot, zeta_1_tmatch,
+      zeta_1_skh, zeta_1_sot_12, zeta_1_sot_21), 
     names_to = "type", values_to = "val"
   ) |> 
   mutate(
@@ -1431,7 +1921,7 @@ data_plot <- res_sim_prop |>
     ),
     dist_to_theo_val = 3 - val
   )
-ggplot(
+p <- ggplot(
   data = data_plot,
   mapping = aes(x = factor(prop_0), y = dist_to_theo_val)
 ) +
@@ -1455,14 +1945,28 @@ ggplot(
   ) +
   theme(legend.position = "bottom") +
   labs(
-    x = "Proportion of 0",
-    y = "Distance to theoretical natural direct effect",
+    x = x_lab,
+    y = y_lab
   ) +
   scale_x_discrete(
     labels = ifelse(
-      (unique(data_plot$prop_0)*100) %% 10 == 0, 
+      (unique(data_plot$prop_0)*100) %% 20 == 0, 
       yes = unique(data_plot$prop_0), no = "")
   )
+p
+
+if (export_pdf == TRUE) {
+  filename <- "gaussian-mc-prop-zeta1"
+  ggplot2_to_pdf(
+    plot = p + theme(panel.spacing = unit(0.4, "lines")),
+    filename = filename, path = "figs/", 
+    width = 3.3, height = 3.5,
+    crop = TRUE
+  )
+  
+  system(paste0("pdfcrop figs/", filename, ".pdf figs/", filename, ".pdf"))
+}
+
 ```
 :::
 
