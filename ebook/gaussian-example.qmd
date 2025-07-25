@@ -5,8 +5,7 @@
 
 ## Objectives
 
-In this page, we generate two Gaussian
-
+In this chapter, we generate a binary treatment $a\in\{0,1\}$ (assigned in a well-balances manner) which affects two mediators, $x_1$ and $x_2$, as well as an outcome $y$. The outcome is generated according to a linear model. We then compute causal effects using different methods (causal mediation analysis, as well as transport-based methods).
 
 
 :::
