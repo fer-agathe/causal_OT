@@ -660,7 +660,7 @@ sim_f <- function(n0 = 250,
 
 ## Varying the Distance Between the Means
 
-We make the distance between the means of the Gaussian distributions of the two groups increase. With $\boldsymbol{\mu}_0 = \begin{pmatrix}-1\\-1\end{pmatrix}$ and $\boldsymbol{\mu}_1 = \begin{pmatrix}1\\1\end{pmatrix}$, the distance is equal to $1$. We apply a scalar coefficient $\alpha\geq 0$ to the means to increase that distance: $a\boldsymbol{\mu}_0$ and $a\boldsymbol{\mu}_1$. We make $\alpha$ vary from 0 to 1 by steps of .1. When $\alpha=0$, the distance is equal to $0$, when $\alpha=2$, the distance is equal to $2$.
+We make the distance between the means of the Gaussian distributions of the two groups increase. With $\boldsymbol{\mu}_0 = \begin{pmatrix}-1\\-1\end{pmatrix}$ and $\boldsymbol{\mu}_1 = \begin{pmatrix}1\\1\end{pmatrix}$, the distance is equal to $1$. We apply a scalar coefficient $\alpha\geq 0$ to the means to increase that distance: $a\boldsymbol{\mu}_0$ and $a\boldsymbol{\mu}_1$. We make $\alpha$ vary from 0 to 2 by steps of .1. When $\alpha=0$, the distance is equal to $0$, when $\alpha=2$, the distance is equal to $4$.
 
 A visual representation of the samples that can be drawn from the DGP with three values of $\alpha$ is provided in @fig-gaussian-example-alpha.
 
@@ -954,7 +954,7 @@ a1 <- 2
 a2 <- -1.5
 export_pdf <- FALSE
 
-x_lab <- "Distance $\\alpha$"
+x_lab <- "$\\alpha$ (distance $=2\\alpha$)"
 y_lab <- "Distance to $\\bar\\tau$"
 
 if (export_pdf == FALSE) {
@@ -1042,7 +1042,7 @@ p
 #| code-summary: Codes to create the Figure.
 export_pdf <- FALSE
 
-x_lab <- "Distance $\\alpha$"
+x_lab <- "$\\alpha$ (distance $=2\\alpha$)"
 y_lab <- "Distance to $\\bar\\delta(0)$"
 
 if (export_pdf == FALSE) {
@@ -1174,7 +1174,7 @@ ggplot(
   ) +
   theme(legend.position = "bottom") +
   labs(
-    x = latex2exp::TeX("Distance $\\alpha$"),
+    x = latex2exp::TeX("$\\alpha$ (distance $=2\\alpha$)"),
     y = "Distance to theoretical natural indirect effect",
   ) +
   scale_x_discrete(
@@ -1235,7 +1235,7 @@ ggplot(
   ) +
   theme(legend.position = "bottom") +
   labs(
-    x = latex2exp::TeX("Distance $\\alpha$"),
+    x = latex2exp::TeX("$\\alpha$ (distance $=2\\alpha$)"),
     y = "Distance to theoretical natural direct effect",
   ) +
   scale_x_discrete(
@@ -1254,7 +1254,7 @@ p
 #| code-summary: Codes to create the Figure.
 export_pdf <- FALSE
 
-x_lab <- "Distance $\\alpha$"
+x_lab <- "$\\alpha$ (distance $=2\\alpha$)"
 y_lab <- "Distance to $\\bar\\zeta(1)$"
 
 if (export_pdf == FALSE) {
@@ -1344,7 +1344,7 @@ a1 <- 2
 a2 <- -1.5
 export_pdf <- FALSE
 
-x_lab <- "Distance $\\alpha$"
+x_lab <- "$\\alpha$ (distance $=2\\alpha$)"
 y_lab <- "Estimation error"
 metrics_lab <- c("$\\bar{\\delta}(0)$", "$\\bar{\\zeta}(1)$", "$\\bar{\\tau}$")
 
