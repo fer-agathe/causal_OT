@@ -1839,6 +1839,145 @@ tribble(
 ) |> 
   pivot_wider(names_from = "Name", values_from = "Value")
 ```
+Let us have a look at the distribution of the individual causal effects (@fig-gaussian-dist-indiv-effects).
+
+```{r}
+#| message: false
+#| warning: false
+#| fig-cap: Distribution of individual direct effect ($\delta_i(0)$), indirect effect ($\zeta_i(0)$), and total causal effect ($\tau_i$) estimated with transport-based counterfactuals with optimal transport (OT-M), penalized transport (SKH), and sequential transport (ST).
+#| label: fig-gaussian-dist-indiv-effects
+#| code-fold: true
+#| code-summary: Codes to create the Figure.
+
+plot_hist_effects <- function(x, 
+                              var_name, 
+                              tikz = FALSE,
+                              fill = "red",
+                              printed_method = "",
+                              x_lim = NULL,
+                              print_main = TRUE,
+                              print_x_axis = TRUE) {
+  if (print_main == TRUE) {
+    name_effect <- case_when(
+      str_detect(var_name, "^delta_0") ~ "$\\delta_i(0)$",
+      str_detect(var_name, "^zeta_1") ~ "$\\zeta_i(1)$",
+      str_detect(var_name, "^tot_effect") ~ "$\\tau_i(1)$",
+      TRUE ~ "other"
+    )
+    if (tikz == FALSE) name_effect <- latex2exp::TeX(name_effect)
+  } else {
+    name_effect <- ""
+  }
+  
+  
+  if (var_name == "tot_effect") {
+    data_plot <- x[["delta_0_i"]] + x[["zeta_1_i"]]
+  } else {
+    data_plot <- x[[var_name]]
+  }
+  
+  if (is.null(x_lim)) {
+    hist(
+      data_plot, 
+      main = "", xlab = "", ylab = "", family = font_family,
+      col = fill, axes = FALSE
+    )
+  } else {
+    hist(
+      data_plot, 
+      main = "", xlab = "", ylab = "", family = font_family,
+      col = fill, xlim = x_lim, axes = FALSE
+    )
+  }
+  
+  if (print_x_axis) axis(1, family = font_family)
+  axis(2, family = font_family)
+  
+  title(
+    main = name_effect, cex.main = 1, family = font_family
+  )
+  
+  if (printed_method != "") {
+    title(
+      ylab = printed_method, line = 2, 
+      cex.lab = 1, family = font_family
+    )
+  }
+  abline(v = mean(data_plot), col = "darkred", lty = 2, lwd = 2)
+}
+
+export_tikz <- FALSE
+
+
+file_name <- "gaussian-indiv-effects"
+width_tikz <- 2.3
+height_tikz <- 2.7
+if (export_tikz == TRUE)
+  tikz(paste0("figs/", file_name, ".tex"), width = width_tikz, height = height_tikz)
+
+layout(
+  matrix(1:(3*5), byrow = TRUE, ncol = 3),
+  widths = c(1, rep(.9, 2)), heights = c(1, rep(.72, 4))
+)
+
+for (i in 1:5) {
+  x <- case_when(
+    i == 1 ~ causal_effects_ot,
+    i == 2 ~ causal_effects_tmatch,
+    i == 3 ~ causal_effect_skh[["0.1"]],
+    i == 4 ~ causal_effect_sot_12,
+    i == 5 ~ causal_effect_sot_21
+  )
+  method <- case_when(
+    i == 1 ~ "OT",
+    i == 2 ~ "OT-M",
+    i == 3 ~ "SKH",
+    i == 4 ~ "ST(1)",
+    i == 5 ~ "ST(2)"
+  )
+  colour <- case_when(
+    i == 1 ~ colour_methods[["OT"]],
+    i == 2 ~ colour_methods[["OT-M"]],
+    i == 3 ~ colour_methods[["skh"]],
+    i == 4 ~ colour_methods[["seq_1"]],
+    i == 5 ~ colour_methods[["seq_2"]]
+  )
+  
+  for (var_name in c("delta_0_i", "zeta_1_i", "tot_effect")) {
+    mar_bottom <- ifelse(i == 5, 2.1, .6)
+    mar_left <- ifelse(var_name == "delta_0_i", 3.1, 2.1)
+    mar_top <- ifelse(i == 1, 2.1, .1)
+    mar_right <- .4
+    printed_method <- ifelse(var_name == "delta_0_i", method, "")
+    
+    par(mar = c(mar_bottom, mar_left, mar_top, mar_right))
+    x_lim_list <- list(
+      "delta_0_i" = c(-3, 6),
+      "zeta_1_i" = c(-3, 8),
+      "tot_effect" = c(-4, 14)
+    )
+    
+    plot_hist_effects(
+      x = x, var_name = var_name, tikz = export_tikz, 
+      fill = colour_methods[i],
+      printed_method = printed_method, 
+      x_lim = x_lim_list[[var_name]],
+      print_main = i == 1,
+      print_x_axis = i == 5
+    )
+  }
+}
+
+if (export_tikz == TRUE) {
+  dev.off()
+  plot_to_pdf(
+    filename = file_name, 
+    path = "./figs/", keep_tex = FALSE, crop = T
+  )
+}
+```
+
+
 ### Some Individuals
 
 
