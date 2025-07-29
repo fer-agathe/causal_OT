@@ -684,3 +684,16 @@ if (export_tikz == TRUE) {
 }
 ```
 
+### Summary
+
+```{r summary-table}
+tibble::tribble(
+  ~method, ~delta_0, ~zeta_1, ~tot_effect,
+  "CM", delta_0_med, zeta_1_med, tot_effect_med,
+  "OT", causal_effects_ot$delta_0, causal_effects_ot$zeta_1, causal_effects_ot$tot_effect,
+  "SKH", causal_effects_sink_ot$delta_0, causal_effects_sink_ot$zeta_1, causal_effects_sink_ot$tot_effect,
+  "ST", causal_effects_st$delta_0, causal_effects_st$zeta_1, causal_effects_st$tot_effect
+) |> 
+  knitr::kable(digits = 2)
+```
+
