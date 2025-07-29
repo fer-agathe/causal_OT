@@ -952,9 +952,9 @@ load("../output/res_sim-gaussian-mc.rda")
 #| code-summary: Codes to create the Figure.
 a1 <- 2
 a2 <- -1.5
-export_pdf <- FALSE
+export_pdf <- TRUE
 
-x_lab <- "$\\alpha$ (distance $=2\\alpha$)"
+x_lab <- "$\\alpha$ (distance $=2\\alpha\\sqrt{2}$)"
 y_lab <- "Distance to $\\bar\\tau$"
 
 if (export_pdf == FALSE) {
@@ -1040,9 +1040,9 @@ p
 #| fig-height: 6
 #| code-fold: true
 #| code-summary: Codes to create the Figure.
-export_pdf <- FALSE
+export_pdf <- TRUE
 
-x_lab <- "$\\alpha$ (distance $=2\\alpha$)"
+x_lab <- "$\\alpha$ (distance $=2\\alpha\\sqrt{2}$)"
 y_lab <- "Distance to $\\bar\\delta(0)$"
 
 if (export_pdf == FALSE) {
@@ -1072,7 +1072,7 @@ data_plot <- res_sim |>
       ),
       labels = c("CM", "OT", "OT-M", "SKH", "ST(1)", "ST(2)")
     ),
-    dist_to_theo_val = ((a1+a2)*(mu1-mu0)) - val
+    dist_to_theo_val = ((a1+a2)*(a*mu1-a*mu0)) - val
   )
 
 p <- ggplot(
@@ -1148,7 +1148,7 @@ data_plot <- res_sim |>
       ),
       labels = c("CM", "OT", "OT-M", "SKH", "ST(1)", "ST(2)")
     ),
-    dist_to_theo_val = ((a1+a2)*(mu1-mu0)) - val
+    dist_to_theo_val = ((a1+a2)*(a*mu1-a*mu0)) - val
   )
 ggplot(
   data = data_plot,
@@ -1174,7 +1174,7 @@ ggplot(
   ) +
   theme(legend.position = "bottom") +
   labs(
-    x = latex2exp::TeX("$\\alpha$ (distance $=2\\alpha$)"),
+    x = latex2exp::TeX("$\\alpha$ (distance $=2\\alpha\\sqrt{2}$)"),
     y = "Distance to theoretical natural indirect effect",
   ) +
   scale_x_discrete(
@@ -1235,7 +1235,7 @@ ggplot(
   ) +
   theme(legend.position = "bottom") +
   labs(
-    x = latex2exp::TeX("$\\alpha$ (distance $=2\\alpha$)"),
+    x = latex2exp::TeX("$\\alpha$ (distance $=2\\alpha\\sqrt{2}$)"),
     y = "Distance to theoretical natural direct effect",
   ) +
   scale_x_discrete(
@@ -1252,9 +1252,9 @@ p
 #| fig-height: 6
 #| code-fold: true
 #| code-summary: Codes to create the Figure.
-export_pdf <- FALSE
+export_pdf <- TRUE
 
-x_lab <- "$\\alpha$ (distance $=2\\alpha$)"
+x_lab <- "$\\alpha$ (distance $=2\\alpha\\sqrt{2}$)"
 y_lab <- "Distance to $\\bar\\zeta(1)$"
 
 if (export_pdf == FALSE) {
@@ -1342,9 +1342,9 @@ A more condensed figure, which focuses on $\bar{\delta}(0)$,  $\bar{\zeta}(1)$, 
 #| code-summary: Codes to create the Figure.
 a1 <- 2
 a2 <- -1.5
-export_pdf <- FALSE
+export_pdf <- TRUE
 
-x_lab <- "$\\alpha$ (distance $=2\\alpha$)"
+x_lab <- "$\\alpha$ (distance $=2\\alpha\\sqrt{2}$)"
 y_lab <- "Estimation error"
 metrics_lab <- c("$\\bar{\\delta}(0)$", "$\\bar{\\zeta}(1)$", "$\\bar{\\tau}$")
 
@@ -1401,7 +1401,7 @@ data_plot_delta0 <- res_sim |>
       ),
       labels = c("CM", "OT", "OT-M", "SKH", "ST(1)", "ST(2)")
     ),
-    dist_to_theo_val = ((a1+a2)*(mu1-mu0)) - val
+    dist_to_theo_val = ((a1+a2)*(a*mu1-a*mu0)) - val
   )
 
 data_plot_zeta1 <- res_sim |> 
