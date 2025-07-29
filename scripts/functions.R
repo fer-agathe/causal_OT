@@ -872,17 +872,31 @@ wasserstein_simplex <- function(X,
 #' 
 #' @param data_untreated Dataset with the untreated units only.
 #' @param data_treated Dataset with the treated units only.
-#' @param data_cf Counterfactuals (untreated had they been treated).
+#' @param data_cf_untreated Counterfactuals for untreated had they been treated.
+#' @param data_cf_treated Counterfactuals for treated had they been untreated.
 #' @param Y_name Name of the column with the outcome variable.
 #' @param A_name Name of the column with the treatment variable.
 #' @param A_untreated Value of the treatment for the untreated units.
 #' 
 #' @returns A list:
-#' - `delta_0_i`: \eqn{\delta_(0)}, individual causal mediation effects for \eqn{a=0},
-#' - `delta_0`: \eqn{\bar{\delta}(0)}, average causal mediation effect for \eqn{a=0},
-#' - `zeta_1_i`: \eqn{\zeta_(1)}, individual causal mediation effects for \eqn{a=1},
-#' - `zeta_1`: \eqn{\bar{\zeta}(1)}, average causal mediation effect for \eqn{a=1},
-#' - `tot_effect`: \eqb{\tau}: average total effect (\eqn{\bar{\delta}(0) + \bar{\zeta}(1)}).
+#' - `delta_0_i`: \eqn{\delta_(0)}, individual causal mediation effects for 
+#'   \eqn{a=0} (computed on untreated),
+#' - `delta_0`: \eqn{\bar{\delta}(0)}, average causal mediation effect for 
+#'   \eqn{a=0} (computed on untreated),
+#' - `delta_1_i`: \eqn{\delta_(1)}, individual causal mediation effects for 
+#'   \eqn{a=1} (computed on treated),
+#' - `delta_1`: \eqn{\bar{\delta}(1)}, average causal mediation effect for 
+#'   \eqn{a=1} (computed on treated),
+#' - `zeta_0_i`: \eqn{\zeta_(0)}, individual causal mediation effects for 
+#'   \eqn{a=0} (computed on treaded),
+#' - `zeta_0`: \eqn{\bar{\zeta}(0)}, average causal mediation effect for 
+#'   \eqn{a=0} (computed on treated),
+#' - `zeta_1_i`: \eqn{\zeta_(1)}, individual causal mediation effects for 
+#'   \eqn{a=1} (computed on untreaded),
+#' - `zeta_1`: \eqn{\bar{\zeta}(1)}, average causal mediation effect for 
+#'   \eqn{a=1} (computed on untreated),
+#' - `tot_effect`: \eqb{\tau}: average total effect (\eqn{\bar{\delta}(0) + 
+#'   \bar{\zeta}(1)}).
 #'
 #' @importFrom randomForest randomForest
 #' @importFrom dplyr pull select
@@ -890,7 +904,8 @@ wasserstein_simplex <- function(X,
 #' @md
 causal_effects_cf <- function(data_untreated,
                               data_treated,
-                              data_cf,
+                              data_cf_untreated,
+                              data_cf_treated,
                               Y_name,
                               A_name,
                               A_untreated) {
@@ -910,25 +925,55 @@ causal_effects_cf <- function(data_untreated,
     y = pull(data_treated, !!Y_name)
   )
   
-  # Observed outcome for untreated
-  Y_untreated_obs <- data_untreated |> pull(!!Y_name)
+  # Observed outcome
+  y_untreated_obs <- data_untreated |> pull(!!Y_name)
+  y_treated_obs <- data_treated |> pull(!!Y_name)
   
-  # Natural Indirect Effect
-  delta_0_i <- predict(mu_untreated_model, newdata = data_cf) - Y_untreated_obs
+  # Natural Indirect Effect, using predictions
+  delta_0_i <- predict(mu_untreated_model, newdata = data_cf_untreated) -
+    predict(mu_untreated_model)
   delta_0 <- mean(delta_0_i)
-  # Natural Direct Effect
-  zeta_1_i <- predict(mu_treated_model, newdata = data_cf) - 
-    predict(mu_untreated_model, newdata = data_cf)
+  delta_1_i <- predict(mu_treated_model) - 
+    predict(mu_treated_model, newdata = data_cf_treated)
+  delta_1 <- mean(delta_1_i)
+  
+  # Natural Indirect Effect, using observed variables
+  delta_0_i_obs <- predict(mu_untreated_model, newdata = data_cf_untreated) - 
+    y_untreated_obs
+  delta_0_obs <- mean(delta_0_i_obs)
+  delta_1_i_obs <- y_treated_obs - 
+    predict(mu_treated_model, newdata = data_cf_treated)
+  delta_1_obs <- mean(delta_1_i_obs)
+  
+  # Natural Direct Effect (only predictions)
+  zeta_0_i <- predict(mu_treated_model, newdata = data_cf_treated) -
+    predict(mu_untreated_model, newdata = data_cf_treated)
+  zeta_0 <- mean(zeta_0_i)
+  
+  zeta_1_i <- predict(mu_treated_model, newdata = data_cf_untreated) - 
+    predict(mu_untreated_model, newdata = data_cf_untreated)
   zeta_1 <- mean(zeta_1_i)
+  
   # Total Causal Effect for treated
-  tot_effect <- delta_0 + zeta_1
+  tot_effect <- delta_0 + zeta_1  
+  tot_effect_obs <- delta_0_obs + zeta_1
+  
   
   list(
     delta_0_i = delta_0_i,
-    delta_0 = delta_0,
+    delta_1_i = delta_1_i,
+    zeta_0_i = zeta_0_i,
     zeta_1_i = zeta_1_i,
+    delta_0_i_obs = delta_0_i_obs,
+    delta_1_i_obs = delta_1_i_obs,
+    delta_0 = delta_0,
+    delta_1 = delta_1,
+    zeta_0 = zeta_0,
     zeta_1 = zeta_1,
-    tot_effect = tot_effect
+    delta_0_obs = delta_0_obs,
+    delta_1_obs = delta_1_obs,
+    tot_effect = tot_effect,
+    tot_effect_obs = tot_effect_obs
   )
 }
 
@@ -981,8 +1026,8 @@ optimal_transport_cf <- function(data,
     dummies <- caret::dummyVars(formula, data = X0_cat)
     
     # Dummy variable
-    dummy_0 <- predict(dummies, newdata = X0_cat) %>% as.data.frame()
-    dummy_1 <- predict(dummies, newdata = X1_cat) %>% as.data.frame()
+    dummy_0 <- predict(dummies, newdata = X0_cat) |> as.data.frame()
+    dummy_1 <- predict(dummies, newdata = X1_cat) |> as.data.frame()
     
     # Scaling
     dummy_0_scaled <- scale(dummy_0)
@@ -991,12 +1036,18 @@ optimal_transport_cf <- function(data,
     dummy_0_df <- as.data.frame(dummy_0_scaled)
     dummy_1_df <- as.data.frame(dummy_1_scaled)
     
-    # Aling categories in both treated/untreated groups
+    # Align categories in both treated/untreated groups
     all_cols <- union(colnames(dummy_0_df), colnames(dummy_1_df))
-    dummy_0_df <- dummy_0_df %>% mutate(across(.fns = identity)) %>% select(all_of(all_cols)) %>% replace(is.na(.), 0)
-    dummy_1_df <- dummy_1_df %>% mutate(across(.fns = identity)) %>% select(all_of(all_cols)) %>% replace(is.na(.), 0)
+    dummy_0_df <- dummy_0_df |> 
+      mutate(across(.fns = identity)) |> 
+      select(all_of(all_cols)) |> 
+      replace_na(0)
+    dummy_1_df <- dummy_1_df |> 
+      mutate(across(.fns = identity)) |> 
+      select(all_of(all_cols)) |> 
+      replace_na(0)
     
-    # Sauvegarde dans les listes
+    # Save in lists
     X0_cat_encoded[[col]] <- dummy_0_df
     X1_cat_encoded[[col]] <- dummy_1_df
   }
