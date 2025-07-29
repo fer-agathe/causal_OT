@@ -477,6 +477,8 @@ cbind(delta_0 = delta_0_med, zeta_1 = zeta_1_med, tot_effect = tot_effect_med)
 library(randomForest)
 ```
 
+# TO CHANGE
+
 We use a random forest to estimate the outcome model (see `causal_effects_cf()`{.R} in [Chapter -@sec-functions]).
 
 ```{r define-causal_effects_ot}
@@ -486,7 +488,9 @@ We use a random forest to estimate the outcome model (see `causal_effects_cf()`{
 causal_effects_ot <- causal_effects_cf(
   data_untreated = tb_untreated, 
   data_treated = tb_treated,
-  data_cf = as_tibble(tb_ot_transported), 
+  data_cf_untreated = as_tibble(tb_ot_transported), 
+# CHANGE HERE
+  data_cf_treated = as_tibble(tb_ot_transported), 
   Y_name = Y_name, 
   A_name = A_name, 
   A_untreated = A_untreated # 0
@@ -542,3 +546,146 @@ cbind(
   tot_effect = causal_effects_st$tot_effect
 )
 ```
+
+
+Let us visualize the distribution on the individuals effects for each transport-based method, in @fig-compas-dist-indiv-effects (frequency on the y-axis).
+```{r}
+#| message: false
+#| warning: false
+#| fig-cap: Distribution of individual direct effect ($\delta_i(0)$), indirect effect ($\zeta_i(0)$), and total causal effect ($\tau_i$) estimated with transport-based counterfactuals with optimal transport (OT-M), penalized transport (SKH), and sequential transport (ST).
+#| label: fig-compas-dist-indiv-effects
+#| code-fold: true
+#| code-summary: Codes to create the Figure.
+library(tikzDevice)
+source("../scripts/utils.R")
+
+plot_hist_effects <- function(x, 
+                              var_name, 
+                              tikz = FALSE,
+                              fill = "red",
+                              printed_method = "",
+                              x_lim = NULL,
+                              print_main = TRUE,
+                              print_x_axis = TRUE) {
+  if (print_main == TRUE) {
+    name_effect <- case_when(
+      str_detect(var_name, "^delta_0") ~ "$\\delta_i(0)$",
+      str_detect(var_name, "^zeta_1") ~ "$\\zeta_i(1)$",
+      str_detect(var_name, "^tot_effect") ~ "$\\tau_i(1)$",
+      TRUE ~ "other"
+    )
+    if (tikz == FALSE) name_effect <- latex2exp::TeX(name_effect)
+  } else {
+    name_effect <- ""
+  }
+  
+  
+  if (var_name == "tot_effect") {
+    data_plot <- x[["delta_0_i"]] + x[["zeta_1_i"]]
+  } else {
+    data_plot <- x[[var_name]]
+  }
+  
+  if (is.null(x_lim)) {
+    hist(
+      data_plot, 
+      main = "", xlab = "", ylab = "", family = font_family,
+      col = fill, axes = FALSE
+    )
+  } else {
+    hist(
+      data_plot, 
+      main = "", xlab = "", ylab = "", family = font_family,
+      col = fill, xlim = x_lim, axes = FALSE
+    )
+  }
+  
+  if (print_x_axis) axis(1, family = font_family)
+  axis(2, family = font_family)
+  
+  title(
+    main = name_effect, cex.main = 1, family = font_family
+  )
+  
+  if (printed_method != "") {
+    title(
+      ylab = printed_method, line = 2, 
+      cex.lab = 1, family = font_family
+    )
+  }
+  abline(v = mean(data_plot), col = "darkred", lty = 2, lwd = 2)
+}
+
+
+colour_methods <- c(
+  # "OT" = "#CC79A7",
+  "OT-M" = "#009E73",
+  "skh" = "darkgray",
+  "seq_1" = "#0072B2", 
+  "seq_2" = "#D55E00"
+)
+
+
+export_tikz <- TRUE
+
+
+file_name <- "compas-dist-indiv-effects"
+width_tikz <- 2.25
+height_tikz <- 1.4
+if (export_tikz == TRUE)
+  tikz(paste0("figs/", file_name, ".tex"), width = width_tikz, height = height_tikz)
+
+layout(
+  matrix(1:9, byrow = TRUE, ncol = 3),
+  widths = c(1, rep(.9, 2)), heights = c(1, rep(.72, 2))
+)
+
+for (i in 1:3) {
+  x <- case_when(
+    i == 1 ~ causal_effects_ot,
+    i == 2 ~ causal_effects_sink_ot,
+    i == 3 ~ causal_effects_st
+  )
+  method <- case_when(
+    i == 1 ~ "OT-M",
+    i == 2 ~ "SKH",
+    i == 3 ~ "ST"
+  )
+  
+  for (var_name in c("delta_0_i", "zeta_1_i", "tot_effect")) {
+    mar_bottom <- ifelse(i == 3, 2.1, .6)
+    mar_left <- ifelse(var_name == "delta_0_i", 3.1, 2.1)
+    mar_top <- ifelse(i == 1, 2.1, .1)
+    mar_right <- .4
+    printed_method <- ifelse(var_name == "delta_0_i", method, "")
+    
+    par(mar = c(mar_bottom, mar_left, mar_top, mar_right))
+    x_lim_list <- list(
+      "delta_0_i" = c(-1, 1),
+      "zeta_1_i" = c(-.4, .4),
+      "tot_effect" = c(-1, 1)
+    )
+    
+    plot_hist_effects(
+      x = x, var_name = var_name, tikz = export_tikz, 
+      fill = colour_methods[i],
+      printed_method = printed_method, 
+      x_lim = x_lim_list[[var_name]],
+      print_main = i == 1,
+      print_x_axis = i == 3
+    )
+  }
+}
+
+
+if (export_tikz == TRUE) {
+  dev.off()
+  plot_to_pdf(
+    filename = file_name, 
+    path = "./figs/", keep_tex = FALSE, crop = T
+  )
+}
+
+
+```
+
