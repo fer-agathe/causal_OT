@@ -26,6 +26,8 @@ library(seqtransfairness)
 library(transportsimplex)
 ```
 
+
+
 ## `compute_counterfactual_probs()`{.R}
 
 ```{r define-compute_counterfactual_probs}
@@ -37,6 +39,9 @@ library(transportsimplex)
 #' @param weights_0 Matrix of intra-group distances for group 0.
 #' @param weights_1 Matrix of inter-group distances from group 0 to group 1.
 #' @param num_neighbors_q Number of neighbors to use.
+#' @param method Either `"shortsimplex"`, `"sinkhorn"`, or `"OSQP"`.
+#' @param lambda A regularization parameter (default to 0.1). Only if 
+#'   `method = sinkhorn"`
 #'
 #' @return A vector of counterfactual predicted probabilities.
 compute_counterfactual_probs <- function(i,
@@ -44,7 +49,10 @@ compute_counterfactual_probs <- function(i,
                                          pred_probs_1,
                                          weights_0,
                                          weights_1,
-                                         num_neighbors_q) {
+                                         num_neighbors_q,
+                                         method = c("shortsimplex", "sinkhorn", "OSQP"),
+                                         lambda = 0.1) {
+  
   # Identify closest neighbours within the same group
   dist_neigh_0 <- weights_0[i, , drop = FALSE]
   # and among the other group
@@ -58,13 +66,14 @@ compute_counterfactual_probs <- function(i,
     X = pred_probs_0[ranks_weights_0, ],
     Y = pred_probs_1[ranks_weights_1, ],
     wx = dist_neigh_0[ranks_weights_0],
-    wy = dist_neigh_1[ranks_weights_1]
+    wy = dist_neigh_1[ranks_weights_1],
+    method = method,
+    lambda = lambda
   )
   
   # Most likely match under the transport plan
   pred_probs_1[ranks_weights_1, ][which.max(W_i$plan[i_rank, ]), ]
 }
-
 ```
 
 ## `ot_simplex_probs()`{.R}
@@ -80,16 +89,22 @@ compute_counterfactual_probs <- function(i,
 #'  within target group.
 #' @param num_neighbors_q Number of neigbors to use for categorical variables.
 #'  Default to the min between 50 and the number of observations in the data.
+#' @param method Either `"shortsimplex"`, `"sinkhorn"`, or `"OSQP"`.
+#' @param lambda A regularization parameter (default to 0.1). Only if 
+#'   `method = "sinkhorn"`.
 #' @param cl A cluster object, created by package parallel. If `NULL` (default), 
 #'   no parallel computing is used to transport categorical data.
 #'  
-#' @importFrom transportsimplex wasserstein_simplex
 ot_simplex_probs <- function(pred_probs_0,
                              pred_probs_1,
                              weights_0,
                              weights_1,
                              num_neighbors_q = NULL,
+                             method = c("shortsimplex", "sinkhorn", "OSQP"),
+                             lambda = 0.1,
                              cl = NULL) {
+  
+  method <- match.arg(method)
   
   if (is.null(num_neighbors_q)) {
     num_neighbors_q <- min(nrow(pred_probs_0), nrow(pred_probs_1), 50)
@@ -108,7 +123,7 @@ ot_simplex_probs <- function(pred_probs_0,
       cl, varlist = c(
         "pred_probs_0", "pred_probs_1", 
         "weights_0", "weights_1", 
-        "num_neighbors_q", "compute_counterfactual_probs"
+        "num_neighbors_q", "method", "compute_counterfactual_probs"
       ),
       envir = environment()
     )
@@ -120,16 +135,21 @@ ot_simplex_probs <- function(pred_probs_0,
       weights_0 = weights_0,
       weights_1 = weights_1,
       num_neighbors_q = num_neighbors_q,
+      lambda = lambda,
+      method = method,
       cl = cl
     )
   } else {
     res <- pbapply::pblapply(
-      indices, compute_counterfactual_probs,
+      indices, 
+      compute_counterfactual_probs,
       pred_probs_0 = pred_probs_0,
       pred_probs_1 = pred_probs_1,
       weights_0 = weights_0,
       weights_1 = weights_1,
-      num_neighbors_q = num_neighbors_q
+      num_neighbors_q = num_neighbors_q,
+      lambda = lambda,
+      method = method
     )
     
   }
@@ -218,6 +238,9 @@ get_assignment <- function(probs,
 #'        estimation. Default to 5.
 #' @param num_neighbors_q Number of neigbors to use for categorical variables.
 #'  Default to the min between 50 and the number of observations in the data.
+#' @param method Either `"shortsimplex"`, `"sinkhorn"`, or `"OSQP"`.
+#' @param lambda A regularization parameter (default to 0.1). Only is 
+#'   `method = sinkhorn`.
 #' @param silent If `TRUE`, the messages showing progress in the estimation are
 #'        not shown. Default to `silent=FALSE`.
 #' @param cl A cluster object, created by package parallel. If `NULL` (default), 
@@ -283,8 +306,13 @@ seq_trans <- function(data,
                       y,
                       num_neighbors = 5,
                       num_neighbors_q = NULL,
+                      method = c("shortsimplex", "sinkhorn", "OSQP"),
+                      lambda = 0.1,
                       silent = FALSE,
                       cl = NULL) {
+  
+  method <- match.arg(method)
+  
   # Make sure character variables are encoded as factors
   data <-
     data |>
@@ -460,6 +488,8 @@ seq_trans <- function(data,
             weights_0 = 1 / (weights_S0 + 1e-8)^2, 
             weights_1 = weights_S1, 
             num_neighbors_q = num_neighbors_q,
+            method = method,
+            lambda = lambda,
             cl = cl
           )
           
@@ -569,7 +599,9 @@ seq_trans <- function(data,
           }
           
           mapping <- wasserstein_simplex(
-            X = pred_probs_0, Y = pred_probs_1
+            X = pred_probs_0, Y = pred_probs_1,
+            method = method,
+            lambda = lambda
           )
           pred_probs_0_t <- counterfactual_w(
             mapping = mapping, X0 = pred_probs_0, X1 = pred_probs_1
@@ -629,6 +661,7 @@ seq_trans <- function(data,
 #'  observations in X and Y.
 #' @noRd
 compute_pdist_simplex_fast <- function(X, Y) {
+  
   p <- ncol(X)
   invX <- 1 / X
   
@@ -669,7 +702,6 @@ compute_pdist_simplex_fast <- function(X, Y) {
 #' @importFrom CVXR Variable Minimize matrix_trace Problem solve
 #' @importFrom lpSolve lp
 #'
-#' @noRd
 wass_lp <- function(dxy,
                     wx,
                     wy,
@@ -713,9 +745,90 @@ wass_lp <- function(dxy,
     gamma <- matrix(f.sol$solution, nrow = m)
     value <- (sum(gamma*cxy)^(1 / p))
   }
+  
   list(distance = value, plan = gamma)
 }
 ```
+
+## `wass_lp_sinkhorn()`{.R}
+
+```{r define-wass_lp_sinkhorn}
+#' Solving the Optimal Transport Problem with Sinkhorn Penalty
+#'
+#' @description
+#' Finds the optimal transport plan using entropic regularization.
+#'
+#' @param dxy Cost matrix of transport distances between points in X and Y.
+#' @param wx Weights (marginal distribution) for X.
+#' @param wy Weights (marginal distribution) for Y.
+#' @param p Order of the Wassterstein distance. (If p=2: squared Euclidean
+#'  cost).
+#' @param A regularization parameter (default to 0.1).
+#'
+#' @importFrom T4transport sinkhornD
+#'
+#' @noRd
+wass_lp_sinkhorn <- function(dxy, 
+                             wx, 
+                             wy, 
+                             p = 2,
+                             lambda = 0.1) {
+  
+  stopifnot(all(abs(sum(wx) - 1) < 1e-8), all(abs(sum(wy) - 1) < 1e-8))
+  
+  # Compute transport plan via Sinkhorn algorithm
+  gamma <- T4transport::sinkhornD(dxy, p = 2, wx = wx, wy = wy, lambda = lambda)
+  
+  list(distance = gamma$distance, plan = gamma$plan)
+}
+```
+
+## `wass_lp_fast()`{.R}
+
+```{r define-wass_lp_fast}
+#' Solving the Optimal Transport Problem
+#'
+#' @description
+#' Finds the optimal transport plan using shortsimplex method.
+#'
+#' @param dxy Cost matrix of transport distances between points in X and Y.
+#' @param wx Weights (marginal distribution) for X.
+#' @param wy Weights (marginal distribution) for Y.
+#' @param p Order of the Wassterstein distance. (If p=2: squared Euclidean
+#'  cost).
+#'
+#' @importFrom transport transport
+#'
+#' @noRd
+wass_lp_fast <- function(dxy, 
+                         wx, 
+                         wy, 
+                         p = 2) {
+  
+  stopifnot(all(abs(sum(wx) - 1) < 1e-8), all(abs(sum(wy) - 1) < 1e-8))
+  
+  m <- length(wx)
+  n <- length(wy)
+  
+  # Convert dxy to a cost matrix (flattened)
+  cost <- as.matrix(dxy)^p
+  
+  # Solve the OT problem (default method = "shortsimplex")
+  plan <- transport::transport(wx, wy, costm = cost)
+  
+  # Convert transport plan (sparse format) to matrix
+  gamma <- matrix(0, m, n)
+  for (i in seq_len(nrow(plan))) {
+    gamma[plan$from[i], plan$to[i]] <- plan$mass[i]
+  }
+  
+  # Compute Wasserstein distance
+  value <- sum(gamma * cost)^(1 / p)
+  
+  list(distance = value, plan = gamma)
+}
+```
+
 
 ## `valid_single_marginal()`{.R}
 
@@ -732,6 +845,7 @@ wass_lp <- function(dxy,
 #' @param fname Name of the distance used (string).
 #' @noRd
 valid_single_marginal <- function(mvec, M, fname) {
+  
   dname <- paste0("'", deparse(substitute(mvec)), "'")
   if ((length(mvec) == 0) && is.null(mvec)) {
     return(rep(1 / M, M))
@@ -741,7 +855,7 @@ valid_single_marginal <- function(mvec, M, fname) {
       stop(
         paste0(
           "* ", fname, " : ", dname,
-          " should be a nonnegative vector of length ",M,"."
+          " should be a nonnegative vector of length ", M, "."
         )
       )
     }
@@ -761,6 +875,9 @@ valid_single_marginal <- function(mvec, M, fname) {
 #' weights will be used).
 #' @param wy Weights (marginal distribution) for Y. Default to `NULL` (uniform
 #' weights will be used).
+#' @param method Either `"shortsimplex"`, `"sinkhorn"`, or `"OSQP"`.
+#' @param A regularization parameter (default to 0.1). Only if 
+#'   `method = "sinkhorn"`.
 #'
 #' @returns A list with two elements:
 #' * `distance`: the Wassterstein distance
@@ -770,8 +887,14 @@ valid_single_marginal <- function(mvec, M, fname) {
 wasserstein_simplex <- function(X,
                                 Y,
                                 wx = NULL,
-                                wy = NULL) {
-  ## CHECK INPUTS
+                                wy = NULL,
+                                method = c("shortsimplex", "sinkhorn", "OSQP"),
+                                lambda = 0.1) {
+  
+  
+  method <- match.arg(method)
+  
+  ## Check Inputs
   if (is.vector(X)) {
     X <- matrix(X, ncol = 1)
   }
@@ -788,8 +911,8 @@ wasserstein_simplex <- function(X,
   m <- base::nrow(X)
   n <- base::nrow(Y)
   
-  wxname <-  paste0("'",deparse(substitute(wx)),"'")
-  wyname <- paste0("'",deparse(substitute(wy)),"'")
+  wxname <-  paste0("'", deparse(substitute(wx)), "'")
+  wyname <- paste0("'", deparse(substitute(wy)), "'")
   fname  <- "wasserstein"
   
   # Weight normalization
@@ -800,7 +923,302 @@ wasserstein_simplex <- function(X,
   dist_mat  <- compute_pdist_simplex_fast(X, Y)
   
   # Solve the optimal transport problem
-  wass_lp(dxy = dist_mat, wx = par_wx, wy = par_wy, p = 2)
+  if (method == "shortsimplex") {
+    return(wass_lp_fast(dxy = dist_mat, wx = par_wx, wy = par_wy, p = 2))
+  } else if (method == "OSQP") {
+    return(wass_lp(dxy = dist_mat, wx = par_wx, wy = par_wy, p = 2))
+  } else {
+    return(
+      wass_lp_sinkhorn(
+        dxy = dist_mat, wx = par_wx, wy = par_wy, 
+        p = 2, lambda = lambda
+      )
+    )
+  }
+  
+}
+```
+
+## `causal_effects_cf()`{.R}
+
+```{r define-causal_effects_cf}
+#' Estimation of total causal effect using counterfactuals.
+#' 
+#' @param data_untreated Dataset with the untreated units only.
+#' @param data_treated Dataset with the treated units only.
+#' @param data_cf_untreated Counterfactuals for untreated had they been treated.
+#' @param data_cf_treated Counterfactuals for treated had they been untreated.
+#' @param Y_name Name of the column with the outcome variable.
+#' @param A_name Name of the column with the treatment variable.
+#' @param A_untreated Value of the treatment for the untreated units.
+#' 
+#' @returns A list:
+#' - `delta_0_i`: \eqn{\delta_(0)}, individual causal mediation effects for 
+#'   \eqn{a=0} (computed on untreated),
+#' - `delta_0`: \eqn{\bar{\delta}(0)}, average causal mediation effect for 
+#'   \eqn{a=0} (computed on untreated),
+#' - `delta_1_i`: \eqn{\delta_(1)}, individual causal mediation effects for 
+#'   \eqn{a=1} (computed on treated),
+#' - `delta_1`: \eqn{\bar{\delta}(1)}, average causal mediation effect for 
+#'   \eqn{a=1} (computed on treated),
+#' - `zeta_0_i`: \eqn{\zeta_(0)}, individual causal mediation effects for 
+#'   \eqn{a=0} (computed on treaded),
+#' - `zeta_0`: \eqn{\bar{\zeta}(0)}, average causal mediation effect for 
+#'   \eqn{a=0} (computed on treated),
+#' - `zeta_1_i`: \eqn{\zeta_(1)}, individual causal mediation effects for 
+#'   \eqn{a=1} (computed on untreaded),
+#' - `zeta_1`: \eqn{\bar{\zeta}(1)}, average causal mediation effect for 
+#'   \eqn{a=1} (computed on untreated),
+#' - `tot_effect`: \eqb{\tau}: average total effect (\eqn{\bar{\delta}(0) + 
+#'   \bar{\zeta}(1)}).
+#'
+#' @importFrom randomForest randomForest
+#' @importFrom dplyr pull select
+#' @importFrom stats predict
+#' @md
+causal_effects_cf <- function(data_untreated,
+                              data_treated,
+                              data_cf_untreated = NULL,
+                              data_cf_treated = NULL,
+                              Y_name,
+                              A_name,
+                              A_untreated) {
+  
+  if (is.null(data_cf_untreated) & is.null(data_cf_treated))
+    stop("Counterfactuals needed for at least one group.")
+  
+  n_untreated <- nrow(data_untreated)
+  n_treated <- nrow(data_treated)
+  
+  # Outcome model for untreated
+  mu_untreated_model <- randomForest(
+    x = data_untreated |> dplyr::select(-!!Y_name, -!!A_name),
+    y = pull(data_untreated, !!Y_name)
+  )
+  
+  # Outcome model for treated
+  mu_treated_model <- randomForest(
+    x = data_treated |> dplyr::select(-!!Y_name, -!!A_name),
+    y = pull(data_treated, !!Y_name)
+  )
+  
+  # Observed outcome
+  y_untreated_obs <- data_untreated |> pull(!!Y_name)
+  y_treated_obs <- data_treated |> pull(!!Y_name)
+  
+  
+  if (!is.null(data_cf_untreated)) {
+    # Natural Indirect Effect, using predictions
+    delta_0_i <- predict(mu_untreated_model, newdata = data_cf_untreated) -
+      predict(mu_untreated_model)
+    delta_0 <- mean(delta_0_i)
+    
+    # Natural Indirect Effect, using observed variables
+    delta_0_i_obs <- predict(mu_untreated_model, newdata = data_cf_untreated) - 
+      y_untreated_obs
+    delta_0_obs <- mean(delta_0_i_obs)
+    
+    # Natural Direct Effect (only predictions)
+    zeta_1_i <- predict(mu_treated_model, newdata = data_cf_untreated) - 
+      predict(mu_untreated_model, newdata = data_cf_untreated)
+    zeta_1 <- mean(zeta_1_i)
+    
+    # Total Causal Effect
+    tot_effect <- delta_0 + zeta_1  
+    tot_effect_obs <- delta_0_obs + zeta_1
+  } else {
+    delta_0_i <- NULL
+    delta_0 <- NULL
+    delta_0_i_obs <- NULL
+    delta_0_obs <- NULL
+    zeta_1_i <- NULL
+    zeta_1 <- NULL
+  }
+  
+  if (!is.null(data_cf_treated)) {
+    # Natural Indirect Effect, using predictions
+    delta_1_i <- predict(mu_treated_model) - 
+      predict(mu_treated_model, newdata = data_cf_treated)
+    delta_1 <- mean(delta_1_i)
+    # Natural Indirect Effect, using observed variables
+    delta_1_i_obs <- y_treated_obs - 
+      predict(mu_treated_model, newdata = data_cf_treated)
+    delta_1_obs <- mean(delta_1_i_obs)
+    # Natural Direct Effect (only predictions)
+    zeta_0_i <- predict(mu_treated_model, newdata = data_cf_treated) -
+      predict(mu_untreated_model, newdata = data_cf_treated)
+    zeta_0 <- mean(zeta_0_i)
+    # Total Causal Effect
+    tot_effect <- delta_1 + zeta_0
+    tot_effect_obs <- delta_1_obs + zeta_0
+  } else {
+    delta_1_i <- NULL
+    delta_1 <- NULL
+    delta_1_i_obs <- NULL
+    delta_1_obs <- NULL
+    zeta_0_i <- NULL
+    zeta_0 <- NULL
+  }
+  
+  list(
+    delta_0_i = delta_0_i,
+    delta_1_i = delta_1_i,
+    zeta_0_i = zeta_0_i,
+    zeta_1_i = zeta_1_i,
+    delta_0_i_obs = delta_0_i_obs,
+    delta_1_i_obs = delta_1_i_obs,
+    delta_0 = delta_0,
+    delta_1 = delta_1,
+    zeta_0 = zeta_0,
+    zeta_1 = zeta_1,
+    delta_0_obs = delta_0_obs,
+    delta_1_obs = delta_1_obs,
+    tot_effect = tot_effect,
+    tot_effect_obs = tot_effect_obs
+  )
+}
+```
+
+
+## `optimal_transport_cf()`{.R}
+
+```{r}
+#' Empirical and Multivariate Optimal Transport.
+#' 
+#' @param data Dataset with all units (treated and untreated).
+#' @param Y_name Name of the column with the outcome variable.
+#' @param A_name Name of the column with the treatment variable.
+#' @param A_untreated Value of the treatment for the untreated units.
+#' @param pen Value of the Sinkhorn regularization parameter. 
+#' If `NULL` (default value), classical Optimal Transport algorithm is applied.
+#' 
+#' @returns A tibble:
+#' `data_transported`: it contains the transported mediator variables for the 
+#' untreated group.
+#'
+#' @importFrom dplyr mutate select across replace
+#' @importFrom stats predict
+#' @md
+optimal_transport_cf <- function(data,
+                                 Y_name,
+                                 A_name,
+                                 A_untreated,
+                                 pen = NULL) {
+  # Settings to apply Optimal Transport
+  A <- data[[A_name]]
+  ind_untreated <- which(A == A_untreated)
+  data_untreated <- data[ind_untreated, ]
+  data_treated <- data[-ind_untreated, ]
+  data_untreated_wo_A <- data_untreated[ , !(names(data_untreated) %in% A_name)]
+  data_treated_wo_A <- data_treated[ , !(names(data_treated) %in% A_name)]
+  n0 <- nrow(data_untreated_wo_A)
+  n1 <- nrow(data_treated_wo_A)
+  X0 <- data_untreated_wo_A[ , !(names(data_untreated_wo_A) %in% Y_name)]
+  X1 <- data_treated_wo_A[ , !(names(data_treated_wo_A) %in% Y_name)]
+  
+  # One-hot categorical variables
+  num_cols <- names(X0)[sapply(X0, is.numeric)]
+  cat_cols <- names(X0)[sapply(X0, function(col) is.factor(col) || is.character(col))]
+  X0_num <- X0[ , num_cols]
+  X1_num <- X1[ , num_cols]
+  X0_cat <- X0[ , cat_cols]
+  X1_cat <- X1[ , cat_cols]
+  cat_counts <- sapply(X0[ , cat_cols], function(col) length(unique(col)))
+  X0_cat_encoded <- list()
+  X1_cat_encoded <- list()
+  for (col in cat_cols) {
+    # One-hot encoding with dummyVars
+    formula <- as.formula(paste("~", col))
+    dummies <- caret::dummyVars(formula, data = X0_cat)
+    
+    # Dummy variable
+    dummy_0 <- predict(dummies, newdata = X0_cat) |> as.data.frame()
+    dummy_1 <- predict(dummies, newdata = X1_cat) |> as.data.frame()
+    
+    # Scaling
+    dummy_0_scaled <- scale(dummy_0)
+    dummy_1_scaled <- scale(dummy_1)
+    
+    dummy_0_df <- as.data.frame(dummy_0_scaled)
+    dummy_1_df <- as.data.frame(dummy_1_scaled)
+    
+    # Align categories in both treated/untreated groups
+    all_cols <- union(colnames(dummy_0_df), colnames(dummy_1_df))
+    dummy_0_df <- dummy_0_df |> 
+      mutate(across(.fns = identity)) |> 
+      select(all_of(all_cols)) %>% 
+      replace(is.na(.), 0)
+    
+    dummy_1_df <- dummy_1_df |> 
+      mutate(across(.fns = identity)) |> 
+      select(all_of(all_cols)) %>% 
+      replace(is.na(.), 0)
+    
+    # Save in lists
+    X0_cat_encoded[[col]] <- dummy_0_df
+    X1_cat_encoded[[col]] <- dummy_1_df
+  }
+  
+  # Calculate Euclidean and Hamming distances for both numeric and categorical variables
+  num_dist <- proxy::dist(x = X0_num, y = X1_num, method = "Euclidean")
+  num_dist <- as.matrix(num_dist)
+  
+  cat_dists <- list()
+  for (col in cat_cols) {
+    mat_0 <- as.matrix(X0_cat_encoded[[col]])
+    mat_1 <- as.matrix(X1_cat_encoded[[col]])
+    dist_mat <- proxy::dist(x = mat_0, y = mat_1, method = "Euclidean")
+    cat_dists[[col]] <- as.matrix(dist_mat)
+  }
+  
+  # Final cost matrix for OT optim. problem
+  combined_cost <- num_dist
+  for (i in seq_along(cat_dists)) {
+    combined_cost <- combined_cost + cat_dists[[i]]
+  }
+  
+  # Uniform weights (equal mass)
+  w0 <- rep(1 / n0, n0)
+  w1 <- rep(1 / n1, n1)
+  # Compute transport plan
+  
+  if (is.null(pen)) {
+    transport_res <- transport::transport(
+      a = w0,
+      b = w1,
+      costm = combined_cost,
+      method = "shortsimplex"
+    )
+    
+    transport_plan <- matrix(0, nrow = n0, ncol = n1)
+    for(i in seq_len(nrow(transport_res))) {
+      transport_plan[transport_res$from[i], transport_res$to[i]] <- transport_res$mass[i]
+    }
+  } else {
+    transport_res <- T4transport::sinkhornD(
+      combined_cost, wx = w0, wy = w1, lambda = pen
+    )
+    transport_plan <- transport_res$plan
+  }
+  
+  # Transport the numerical variables
+  num_transported <- n0 * (transport_plan %*% as.matrix(X1_num))
+  # Transport the categorical variables
+  cat_transported <- list()
+  for (col in cat_cols) {
+    cat_probs <- transport_plan %*% as.matrix(X1_cat_encoded[[col]])
+    cat_encoded_columns <- colnames(X1_cat_encoded[[col]])
+    # For each obs., we take the index with the maximum value (approx. proba)
+    max_indices <- apply(cat_probs, 1, which.max)
+    prefix_pattern <- paste0("^", col, "\\.")
+    cat_transported[[col]] <- sapply(max_indices, function(x) sub(prefix_pattern, "", cat_encoded_columns[x]))
+  }
+  data_transported <- as_tibble(num_transported)
+  for (col in cat_cols) {
+    data_transported[[col]] <- cat_transported[[col]]
+  }
+  
+  data_transported
 }
 ```
 
