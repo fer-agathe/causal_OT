@@ -217,7 +217,7 @@ The categorical variable in the simplex, using the simulated propensity scores, 
 ```{r}
 #| code-fold: true
 #| code-summary: Codes to create the Figure.
-#| fig-cap:  Representation in $\mathcal{S}_3$ of points $\boldsymbol{x}_{0,i}$'s and $\boldsymbol{x}_{1,i}$'s in the simplex $\mathcal{S}_3$.
+#| fig-cap:  Representation in $\mathcal{S}_2$ of points $\boldsymbol{x}_{0,i}$'s and $\boldsymbol{x}_{1,i}$'s in the simplex $\mathcal{S}_2$.
 #| label: fig-ternary-toy
 p <- ggtern(
   data = tb_sample_z_1 |> mutate(type = "(1)") |> 
@@ -271,7 +271,7 @@ The matching can be visualized on a ternary plot (@fig-ternary-categ-ot).
 #| warning: false
 #| #| code-fold: true
 #| code-summary: Codes to create the Figure.
-#| fig-cap: Optimal matching of $\boldsymbol{p}_{0,i}$'s and $\boldsymbol{p}_{1,i}$'s in the simplex $\mathcal{S}_3$.
+#| fig-cap: Optimal matching of $\boldsymbol{p}_{0,i}$'s and $\boldsymbol{p}_{1,i}$'s in the simplex $\mathcal{S}_2$.
 #| label: fig-ternary-categ-ot
 
 # Create interpolated values using McCann (1997) displacement
