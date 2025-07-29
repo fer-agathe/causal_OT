@@ -477,8 +477,6 @@ cbind(delta_0 = delta_0_med, zeta_1 = zeta_1_med, tot_effect = tot_effect_med)
 library(randomForest)
 ```
 
-# TO CHANGE
-
 We use a random forest to estimate the outcome model (see `causal_effects_cf()`{.R} in [Chapter -@sec-functions]).
 
 ```{r define-causal_effects_ot}
@@ -489,8 +487,7 @@ causal_effects_ot <- causal_effects_cf(
   data_untreated = tb_untreated, 
   data_treated = tb_treated,
   data_cf_untreated = as_tibble(tb_ot_transported), 
-# CHANGE HERE
-  data_cf_treated = as_tibble(tb_ot_transported), 
+  data_cf_treated = NULL, 
   Y_name = Y_name, 
   A_name = A_name, 
   A_untreated = A_untreated # 0
@@ -512,7 +509,7 @@ cbind(
 causal_effects_sink_ot <- causal_effects_cf(
   data_untreated = tb_untreated, 
   data_treated = tb_treated,
-  data_cf = as_tibble(tb_sinkhorn_transported), 
+  data_cf_untreated = as_tibble(tb_sinkhorn_transported), 
   Y_name = Y_name, 
   A_name = A_name, 
   A_untreated = A_untreated # 0
@@ -534,7 +531,7 @@ cbind(
 causal_effects_st <- causal_effects_cf(
   data_untreated = tb_untreated, 
   data_treated = tb_treated,
-  data_cf = as_tibble(sequential_transport$transported), 
+  data_cf_untreated = as_tibble(sequential_transport$transported), 
   Y_name = Y_name, 
   A_name = A_name, 
   A_untreated = A_untreated
@@ -626,7 +623,7 @@ colour_methods <- c(
 )
 
 
-export_tikz <- TRUE
+export_tikz <- FALSE
 
 
 file_name <- "compas-dist-indiv-effects"
@@ -661,9 +658,9 @@ for (i in 1:3) {
     
     par(mar = c(mar_bottom, mar_left, mar_top, mar_right))
     x_lim_list <- list(
-      "delta_0_i" = c(-1, 1),
+      "delta_0_i" = c(-.5, .5),
       "zeta_1_i" = c(-.4, .4),
-      "tot_effect" = c(-1, 1)
+      "tot_effect" = c(-.6, .6)
     )
     
     plot_hist_effects(
@@ -685,7 +682,5 @@ if (export_tikz == TRUE) {
     path = "./figs/", keep_tex = FALSE, crop = T
   )
 }
-
-
 ```
 

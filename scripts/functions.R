@@ -904,11 +904,14 @@ wasserstein_simplex <- function(X,
 #' @md
 causal_effects_cf <- function(data_untreated,
                               data_treated,
-                              data_cf_untreated,
-                              data_cf_treated,
+                              data_cf_untreated = NULL,
+                              data_cf_treated = NULL,
                               Y_name,
                               A_name,
                               A_untreated) {
+  
+  if (is.null(data_cf_untreated) & is.null(data_cf_treated))
+    stop("Counterfactuals needed for at least one group.")
   
   n_untreated <- nrow(data_untreated)
   n_treated <- nrow(data_treated)
@@ -929,35 +932,59 @@ causal_effects_cf <- function(data_untreated,
   y_untreated_obs <- data_untreated |> pull(!!Y_name)
   y_treated_obs <- data_treated |> pull(!!Y_name)
   
-  # Natural Indirect Effect, using predictions
-  delta_0_i <- predict(mu_untreated_model, newdata = data_cf_untreated) -
-    predict(mu_untreated_model)
-  delta_0 <- mean(delta_0_i)
-  delta_1_i <- predict(mu_treated_model) - 
-    predict(mu_treated_model, newdata = data_cf_treated)
-  delta_1 <- mean(delta_1_i)
   
-  # Natural Indirect Effect, using observed variables
-  delta_0_i_obs <- predict(mu_untreated_model, newdata = data_cf_untreated) - 
-    y_untreated_obs
-  delta_0_obs <- mean(delta_0_i_obs)
-  delta_1_i_obs <- y_treated_obs - 
-    predict(mu_treated_model, newdata = data_cf_treated)
-  delta_1_obs <- mean(delta_1_i_obs)
+  if (!is.null(data_cf_untreated)) {
+    # Natural Indirect Effect, using predictions
+    delta_0_i <- predict(mu_untreated_model, newdata = data_cf_untreated) -
+      predict(mu_untreated_model)
+    delta_0 <- mean(delta_0_i)
+    
+    # Natural Indirect Effect, using observed variables
+    delta_0_i_obs <- predict(mu_untreated_model, newdata = data_cf_untreated) - 
+      y_untreated_obs
+    delta_0_obs <- mean(delta_0_i_obs)
+    
+    # Natural Direct Effect (only predictions)
+    zeta_1_i <- predict(mu_treated_model, newdata = data_cf_untreated) - 
+      predict(mu_untreated_model, newdata = data_cf_untreated)
+    zeta_1 <- mean(zeta_1_i)
+    
+    # Total Causal Effect
+    tot_effect <- delta_0 + zeta_1  
+    tot_effect_obs <- delta_0_obs + zeta_1
+  } else {
+    delta_0_i <- NULL
+    delta_0 <- NULL
+    delta_0_i_obs <- NULL
+    delta_0_obs <- NULL
+    zeta_1_i <- NULL
+    zeta_1 <- NULL
+  }
   
-  # Natural Direct Effect (only predictions)
-  zeta_0_i <- predict(mu_treated_model, newdata = data_cf_treated) -
-    predict(mu_untreated_model, newdata = data_cf_treated)
-  zeta_0 <- mean(zeta_0_i)
-  
-  zeta_1_i <- predict(mu_treated_model, newdata = data_cf_untreated) - 
-    predict(mu_untreated_model, newdata = data_cf_untreated)
-  zeta_1 <- mean(zeta_1_i)
-  
-  # Total Causal Effect for treated
-  tot_effect <- delta_0 + zeta_1  
-  tot_effect_obs <- delta_0_obs + zeta_1
-  
+  if (!is.null(data_cf_treated)) {
+    # Natural Indirect Effect, using predictions
+    delta_1_i <- predict(mu_treated_model) - 
+      predict(mu_treated_model, newdata = data_cf_treated)
+    delta_1 <- mean(delta_1_i)
+    # Natural Indirect Effect, using observed variables
+    delta_1_i_obs <- y_treated_obs - 
+      predict(mu_treated_model, newdata = data_cf_treated)
+    delta_1_obs <- mean(delta_1_i_obs)
+    # Natural Direct Effect (only predictions)
+    zeta_0_i <- predict(mu_treated_model, newdata = data_cf_treated) -
+      predict(mu_untreated_model, newdata = data_cf_treated)
+    zeta_0 <- mean(zeta_0_i)
+    # Total Causal Effect
+    tot_effect <- delta_1 + zeta_0
+    tot_effect_obs <- delta_1_obs + zeta_0
+  } else {
+    delta_1_i <- NULL
+    delta_1 <- NULL
+    delta_1_i_obs <- NULL
+    delta_1_obs <- NULL
+    zeta_0_i <- NULL
+    zeta_0 <- NULL
+  }
   
   list(
     delta_0_i = delta_0_i,
@@ -1040,12 +1067,13 @@ optimal_transport_cf <- function(data,
     all_cols <- union(colnames(dummy_0_df), colnames(dummy_1_df))
     dummy_0_df <- dummy_0_df |> 
       mutate(across(.fns = identity)) |> 
-      select(all_of(all_cols)) |> 
-      replace_na(0)
+      select(all_of(all_cols)) %>% 
+      replace(is.na(.), 0)
+    
     dummy_1_df <- dummy_1_df |> 
       mutate(across(.fns = identity)) |> 
-      select(all_of(all_cols)) |> 
-      replace_na(0)
+      select(all_of(all_cols)) %>% 
+      replace(is.na(.), 0)
     
     # Save in lists
     X0_cat_encoded[[col]] <- dummy_0_df
