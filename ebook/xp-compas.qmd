@@ -1,4 +1,4 @@
-# Compas
+# Compas {#sec-xp-compas}
 
 
 :::{.callout-note}
@@ -348,7 +348,7 @@ tb_sinkhorn_transported <- as.list(tb_sinkhorn_transported)
 
 ### Sequential Transport
 
-We call the  `seq_trans()`{.R} function (see [Chapter -@sec-functions]) function to build the counterfactuals of Black individuals. The estimations are done using parallel computation.
+We call the `seq_trans()`{.R} function (see [Chapter -@sec-functions]) function to build the counterfactuals of Black individuals. The estimations are done using parallel computation.
 
 ```{r define-sequential_transport}
 library(pbapply)
@@ -697,3 +697,130 @@ tibble::tribble(
   knitr::kable(digits = 2)
 ```
 
+### Decomposition of the Indirect Effect
+
+Due to the iterative nature of the sequential transport approach, which follows the topological order of the mediators in the causal graph, it is possible to further decompose the causal influence of each mediator on the indirect effect at the individual level.
+
+```{r}
+# Load sequential_transport
+load("../output/seq-t-compas.rda")
+```
+
+Total indirect effect with the Sequential Transport approach:
+```{r}
+causal_effects_st$delta_0
+```
+
+Before decomposing the indirect effect, we need to retrieve the fitted RF model of the total indirect effect.
+
+```{r retrieve-mu_untreated_model}
+#| message: false
+#| warning: false
+# Observations
+data_untreated <- tb_untreated
+# All variables transported
+data_cf_untreated <- as_tibble(sequential_transport$transported)
+
+Y_name <- Y_name
+A_name <- A_name
+
+# Outcome model for untreated
+mu_untreated_model <- randomForest(
+  x = data_untreated |> dplyr::select(-!!Y_name, -!!A_name),
+  y = pull(data_untreated, !!Y_name)
+)
+
+```
+
+Now we can modify the `causal_effects_cf()`{.R} to take the fitted RF model as an argument to be able to decompose the indirect effect and we return only the indirect effect at the individual level, `delta_0_i` and the average `delta_0`.
+
+```{r define-modified_causal_effects_cf}
+#| message: false
+#| warning: false
+modified_causal_effects_cf <- function(data_untreated,
+                                       data_cf_untreated = NULL,
+                                       mu_untreated_model) {
+  
+  if (is.null(data_cf_untreated))
+    stop("Counterfactuals needed for the untreated group.")
+  
+  n_untreated <- nrow(data_untreated)
+  
+  # Natural Indirect Effect, using predictions
+  delta_0_i <- predict(mu_untreated_model, newdata = data_cf_untreated) -
+      predict(mu_untreated_model, newdata = data_untreated)
+  delta_0 <- mean(delta_0_i)
+  
+  list(
+    delta_0_i = delta_0_i,
+    delta_0 = delta_0
+  )
+}
+```
+
+The total indirect effect is:
+```{r retrieve-mu_untreated_model}
+#| message: false
+#| warning: false
+modified_causal_effects_cf(data_untreated, data_cf_untreated, mu_untreated_model)$delta_0
+```
+
+#### Causal Influence of Age
+
+```{r define-causal_effects_st_first}
+#| warning: false
+#| message: false
+
+cf_treated_first <- data_untreated |> 
+  mutate(age = as_tibble(sequential_transport$transported)$age)
+
+indirect_age <- modified_causal_effects_cf(
+  data_untreated = data_untreated, 
+  data_cf_untreated = cf_treated_first, 
+  mu_untreated_model = mu_untreated_model
+)
+
+cbind(
+  delta_0_age = indirect_age$delta_0
+)
+```
+
+#### Causal Influence of Prior Counts
+
+```{r define-causal_effects_st_second}
+#| warning: false
+#| message: false
+
+cf_treated_second <- cf_treated_first |> 
+  mutate(priors_count = as_tibble(sequential_transport$transported)$priors_count)
+
+indirect_priors_count <- modified_causal_effects_cf(
+  data_untreated = cf_treated_first, 
+  data_cf_untreated = cf_treated_second, 
+  mu_untreated_model = mu_untreated_model
+)
+
+cbind(
+  delta_0_priors_count = indirect_priors_count$delta_0
+)
+```
+
+#### Causal Influence of Charge Degree
+
+```{r define-causal_effects_st_third}
+#| warning: false
+#| message: false
+
+cf_treated_third <- cf_treated_second |> 
+  mutate(c_charge_degree = as_tibble(sequential_transport$transported)$c_charge_degree)
+
+indirect_c_charge_degree <- modified_causal_effects_cf(
+  data_untreated = cf_treated_second, 
+  data_cf_untreated = cf_treated_third, 
+  mu_untreated_model = mu_untreated_model
+)
+
+cbind(
+  delta_0_c_charge_degree = indirect_c_charge_degree$delta_0
+)
+```
