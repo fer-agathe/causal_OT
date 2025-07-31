@@ -738,11 +738,8 @@ Now we can modify the `causal_effects_cf()`{.R} to take the fitted RF model as a
 #| message: false
 #| warning: false
 modified_causal_effects_cf <- function(data_untreated,
-                                       data_cf_untreated = NULL,
+                                       data_cf_untreated,
                                        mu_untreated_model) {
-  
-  if (is.null(data_cf_untreated))
-    stop("Counterfactuals needed for the untreated group.")
   
   n_untreated <- nrow(data_untreated)
   
@@ -759,7 +756,7 @@ modified_causal_effects_cf <- function(data_untreated,
 ```
 
 The total indirect effect is:
-```{r retrieve-mu_untreated_model}
+```{r show-mu_untreated_model}
 #| message: false
 #| warning: false
 modified_causal_effects_cf(data_untreated, data_cf_untreated, mu_untreated_model)$delta_0
