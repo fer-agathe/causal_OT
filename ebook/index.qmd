@@ -3,10 +3,27 @@
 <!-- Do not forget to install pseudocode extension: `quarto add leovan/quarto-pseudocode` -->
 <!-- Same with quarto install extension pandoc-ext/diagram -->
 
-This ebook contains the codes and explanations of codes used to produce the results of our paper titled *Causal Inference with Counterfactuals and Optimal Transport*.
+This ebook contains the codes and explanations of codes used to produce the results of our paper titled *CaMeLOT, Causal Mediation Leveraging (sequential) Optimal Transport*.
 
-[TBD]
+**Abstract**
 
+> Estimating how a treatment works through mediators, while also capturing what it does directly, is central to causal reasoning, yet most mediation estimators average effects over the population and lean on restrictive structural-equation assumptions. We introduce CaMeLOT, a non-parametric framework that marries Causal Mediation analysis with Optimal Transport (OT) to recover natural direct and indirect effects for each individual rather than only on average.
+Our key idea is to generate counterfactual mediators by transporting every observation along the edges of a known causal Directed acyclic graph (DAG). A sequential transport algorithm handles continuous features, while a Dirichlet-based extension maps categorical mediators on the probability simplex, yielding a deterministic, interpretable coupling between treatment groups.
+We prove that the resulting effect estimators are consistent. Through experiments on both synthetic Gaussian data and a benchmark dataset, we show that our method accurately estimates individual-level total, direct, and indirect effects. It also recovers average causal effects that are comparable to those obtained using a Linear Structural Equation Model (LSEM) and entropy-regularized OT baselines, without sacrificing scalability.
 
+The document is made of 5 parts:
 
+1. **Introduction**  
+    This part provides some refresher about causal mediation analysis ([Chapter -@sec-reminders]), gives a few colours and plot theme functions ([Chapter -@sec-utils]), and contains the main estimation functions that are used in the subsequent chapter ([Chapter -@sec-functions]).
+    
+2. **A Gaussian Example**  
+    Simulations are conducted using Gaussian variables to evaluate the estimation of causal effects in the presence of a mediator. In particular, we compare estimates obtained using the Linear Structural Equation Model (LSEM) approach, implemented in the R package {mediation}, with those derived from counterfactuals constructed via optimal transport techniques (see [Chapter -@sec-motivation-gaussian]). Monte Carlo experiments are then performed to assess how these estimates behave under varying data conditions (see [Chapter @sec-gaussian-ex-simul]).
 
+3. **Counterfactuals for Categorical Data**
+    After a short presentation of the context ([Chapter -@sec-transp-categ-objectives]), we present different methods to build counterfactuals for a categorical variable: using matching ([Chapter @sec-transp-categ-matching]), using optimal transport on label-encoded variables ([Chapter @sec-transp-categ-discrete]), and using optimal transport on the simplex ([Chapter @sec-transp-categ-transport]). 
+    
+4. **Transport with Weight**
+    In [Chapter -@Gaussian Conditional Univariate Transport with Local Weights], we show another method to performe univariate transport in the Gaussian case, using local weights. We illustrate the method with simulated data and compare the results with transported values obtained with sequential transport.
+    
+5. **Experiments**
+    We run some experiments on a synthetic dataset in [Chapter -@sec-xp-simulated] and on a real-world dataset in [Chapter -@sec-xp-compas] to illustrate the entire method.
