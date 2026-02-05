@@ -33,8 +33,8 @@ This page shows how optimal transport can be applied to map a **categorical vari
 #| code-fold: true
 #| code-summary: Codes for graphical parameters
 # col_categ <- c("#ffdd55","#944edf","#3fb3b2")
-col_group <- c("#00A08A","#F2AD00", "#1b95e0")
-col_categ <- c("#56B4E9", "#D55E00", "#CC79A7")
+col_group <- c("#00A08A","#D55E00", "#1b95e0")
+col_categ <- c("#1b95e0", "#F2AD00", "#CC79A7")
 colA <- col_categ[1] ; colB <- col_categ[2] ; colC <- col_categ[3]
 colGpe1 <- col_group[2]
 colGpe0 <- col_group[1]
@@ -140,10 +140,12 @@ $$
 #| echo: true
 #| warning: false
 #| message: false
+# library(ggtern)
+devtools::load_all("/Users/ewengallic/Downloads/ggtern/")
 library(dplyr)
 library(tidyr)
 library(stringr)
-library(ggtern)
+
 library(compositions)
 ```
 
