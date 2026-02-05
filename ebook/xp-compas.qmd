@@ -625,10 +625,10 @@ colour_methods <- c(
 
 export_tikz <- FALSE
 
-
+scale <- 1.42
 file_name <- "compas-dist-indiv-effects"
-width_tikz <- 2.25
-height_tikz <- 1.4
+width_tikz <- 2.25*scale
+height_tikz <- 1.4*scale
 if (export_tikz == TRUE)
   tikz(paste0("figs/", file_name, ".tex"), width = width_tikz, height = height_tikz)
 

@@ -674,11 +674,12 @@ A visual representation of the samples that can be drawn from the DGP with three
 library(tikzDevice)
 export_tikz <- FALSE
 
+scale <- 1.7
+
 if (export_tikz == TRUE) {
   filename <- "gaussian-example-alpha"
-  tikz(paste0("figs/", filename, ".tex"), width = 2.2, height = 1)
+  tikz(paste0("figs/", filename, ".tex"), width = scale*2.2, height = scale*1)
 }
-
 
 draw_ellipse <- function(mu, 
                          sigma, 
@@ -1469,7 +1470,7 @@ p <- ggplot(
   ) +
   geom_hline(yintercept = 0, colour = "darkred", linetype = "dashed") +
   theme_paper() +
-  facet_grid(type ~ metric, scales = "free_x") +
+  facet_grid(metric ~ type, scales = "free_x") +
   scale_fill_manual(
     NULL,
     values = c(
@@ -1491,12 +1492,13 @@ p <- ggplot(
     labels = ifelse(unique(data_plot$a) %% .5 == 0, unique(data_plot$a), "")
   )
 
+scale <- .77
 if (export_pdf == TRUE) {
   filename <- "gaussian-mc-alpha"
   ggplot2_to_pdf(
     plot = p + theme(panel.spacing = unit(0.4, "lines")),
     filename = filename, path = "figs/", 
-    width = 3.3, height = 6,
+    height = scale*3.3, width = scale*6,
     crop = TRUE
   )
   
@@ -2290,7 +2292,7 @@ p <- ggplot(
   ) +
   geom_hline(yintercept = 0, colour = "darkred", linetype = "dashed") +
   theme_paper() +
-  facet_grid(type ~ metric, scales = "free_x") +
+  facet_grid(metric ~ type, scales = "free_x") +
   scale_fill_manual(
     NULL,
     values = c(
@@ -2312,16 +2314,17 @@ p <- ggplot(
     labels = 100*unique(data_plot$prop_0)
   )
 
+scale <- .77
 if (export_pdf == TRUE) {
   filename <- "gaussian-mc-prop"
   ggplot2_to_pdf(
-    plot = p + theme(panel.spacing = unit(0.4, "lines")),
+    plot = p + theme(panel.spacing = unit(0.4, "lines")) +
+      theme(axis.text.x = element_text(size = rel(0.8))),
     filename = filename, path = "figs/", 
-    width = 3.3, height = 6,
+    height = scale*3.6, width = scale*6,
     crop = TRUE
   )
   
   system(paste0("pdfcrop figs/", filename, ".pdf figs/", filename, ".pdf"))
 }
-p
 ```

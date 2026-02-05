@@ -1234,8 +1234,9 @@ draw_ellipse(Mu1, Sig1, col = colGpe1, lty = 2)
 #| code-summary: Codes for the Figure in the paper
 #| message: false
 #| warning: false
+scale <- 1.42
 filename <- "gaussian-transport-0to1"
-tikz(paste0("figs/", filename, ".tex"), width = 2.2, height = 1)
+tikz(paste0("figs/", filename, ".tex"), width = scale*2.2, height = scale*1)
 
 layout(matrix(1:3, ncol = 3), width = c(1, rep(.9, 2)))
 par(mar = c(2.1, 2.1, 2.1, 0.1))
@@ -1849,93 +1850,95 @@ Let us have a look at the distribution of the individual causal effects (@fig-ga
 #| code-fold: true
 #| code-summary: Codes to create the Figure.
 
-plot_hist_effects <- function(x, 
-                              var_name, 
+plot_hist_effects <- function(x,
+                              var_name,
                               tikz = FALSE,
                               fill = "red",
-                              printed_method = "",
+                              method_main = "",
                               x_lim = NULL,
-                              print_main = TRUE,
-                              print_x_axis = TRUE) {
-  if (print_main == TRUE) {
-    name_effect <- case_when(
-      str_detect(var_name, "^delta_0") ~ "$\\delta_i(0)$",
-      str_detect(var_name, "^zeta_1") ~ "$\\zeta_i(1)$",
-      str_detect(var_name, "^tot_effect") ~ "$\\tau_i(1)$",
-      TRUE ~ "other"
-    )
-    if (tikz == FALSE) name_effect <- latex2exp::TeX(name_effect)
-  } else {
-    name_effect <- ""
-  }
+                              effect_ylab = "",
+                              print_method_main = TRUE,
+                              print_x_axis = TRUE,
+                              print_y_axis = TRUE) {
   
+  # effect label (LaTeX)
+  name_effect <- dplyr::case_when(
+    stringr::str_detect(var_name, "^delta_0") ~ "$\\delta_i(0)$",
+    stringr::str_detect(var_name, "^zeta_1") ~ "$\\zeta_i(1)$",
+    stringr::str_detect(var_name, "^tot_effect") ~ "$\\tau_i(1)$",
+    TRUE ~ "other"
+  )
+  if (tikz == FALSE) name_effect <- latex2exp::TeX(name_effect)
   
-  if (var_name == "tot_effect") {
-    data_plot <- x[["delta_0_i"]] + x[["zeta_1_i"]]
-  } else {
-    data_plot <- x[[var_name]]
-  }
+  # data
+  data_plot <- if (var_name == "tot_effect") x[["delta_0_i"]] + x[["zeta_1_i"]] else x[[var_name]]
   
+  # hist
   if (is.null(x_lim)) {
-    hist(
-      data_plot, 
-      main = "", xlab = "", ylab = "", family = font_family,
-      col = fill, axes = FALSE
-    )
+    hist(data_plot, main = "", xlab = "", ylab = "", family = font_family,
+         col = fill, axes = FALSE)
   } else {
-    hist(
-      data_plot, 
-      main = "", xlab = "", ylab = "", family = font_family,
-      col = fill, xlim = x_lim, axes = FALSE
-    )
+    hist(data_plot, main = "", xlab = "", ylab = "", family = font_family,
+         col = fill, xlim = x_lim, axes = FALSE)
   }
   
   if (print_x_axis) axis(1, family = font_family)
-  axis(2, family = font_family)
+  if (print_y_axis) axis(2, family = font_family)
   
-  title(
-    main = name_effect, cex.main = 1, family = font_family
-  )
-  
-  if (printed_method != "") {
-    title(
-      ylab = printed_method, line = 2, 
-      cex.lab = 1, family = font_family
-    )
+  # main title = method (only first row)
+  if (print_method_main && method_main != "") {
+    title(main = method_main, cex.main = 1, family = font_family)
   }
+  
+  # y-axis label = effect name (only first column)
+  if (effect_ylab != "") {
+    title(ylab = effect_ylab, line = 2, cex.lab = 1, family = font_family)
+  }
+  
   abline(v = mean(data_plot), col = "darkred", lty = 2, lwd = 2)
+  
+  invisible(name_effect)
 }
 
 export_tikz <- FALSE
-
-
+scale <- 1.2
 file_name <- "gaussian-indiv-effects"
-width_tikz <- 2.3
-height_tikz <- 2.7
+width_tikz <- 2.7*scale
+height_tikz <- 1.5*scale
 if (export_tikz == TRUE)
   tikz(paste0("figs/", file_name, ".tex"), width = width_tikz, height = height_tikz)
 
 layout(
-  matrix(1:(3*5), byrow = TRUE, ncol = 3),
-  widths = c(1, rep(.9, 2)), heights = c(1, rep(.72, 4))
+  t(matrix(1:(3*5), byrow = TRUE, ncol = 3)),
+  widths  = c(1, rep(.72, 4)),   # 5 columns
+  heights = c(1, rep(.9, 2))     # 3 rows
+)
+
+x_lim_list <- list(
+  "delta_0_i"  = c(-3,  6),
+  "zeta_1_i"   = c(-3,  8),
+  "tot_effect" = c(-4, 14)
 )
 
 for (i in 1:5) {
-  x <- case_when(
+  
+  x <- dplyr::case_when(
     i == 1 ~ causal_effects_ot,
     i == 2 ~ causal_effects_tmatch,
     i == 3 ~ causal_effect_skh[["0.1"]],
     i == 4 ~ causal_effect_sot_12,
     i == 5 ~ causal_effect_sot_21
   )
-  method <- case_when(
+  
+  method <- dplyr::case_when(
     i == 1 ~ "OT",
     i == 2 ~ "OT-M",
     i == 3 ~ "SKH",
     i == 4 ~ "ST(1)",
     i == 5 ~ "ST(2)"
   )
-  colour <- case_when(
+  
+  colour <- dplyr::case_when(
     i == 1 ~ colour_methods[["OT"]],
     i == 2 ~ colour_methods[["OT-M"]],
     i == 3 ~ colour_methods[["skh"]],
@@ -1944,26 +1947,40 @@ for (i in 1:5) {
   )
   
   for (var_name in c("delta_0_i", "zeta_1_i", "tot_effect")) {
-    mar_bottom <- ifelse(i == 5, 2.1, .6)
-    mar_left <- ifelse(var_name == "delta_0_i", 3.1, 2.1)
-    mar_top <- ifelse(i == 1, 2.1, .1)
-    mar_right <- .4
-    printed_method <- ifelse(var_name == "delta_0_i", method, "")
+    
+    # margins after transpose:
+    mar_bottom <- ifelse(var_name == "tot_effect", 2.1, .6)  # bottom row
+    mar_left   <- ifelse(i == 1, 3.1, 2.1)                   # first column
+    mar_top    <- ifelse(var_name == "delta_0_i", 2.1, .1)   # first row
+    mar_right  <- .4
     
     par(mar = c(mar_bottom, mar_left, mar_top, mar_right))
-    x_lim_list <- list(
-      "delta_0_i" = c(-3, 6),
-      "zeta_1_i" = c(-3, 8),
-      "tot_effect" = c(-4, 14)
-    )
+    
+    # effect label only in first column
+    if (i == 1) {
+      effect_label <- dplyr::case_when(
+        stringr::str_detect(var_name, "^delta_0") ~ "$\\delta_i(0)$",
+        stringr::str_detect(var_name, "^zeta_1") ~ "$\\zeta_i(1)$",
+        stringr::str_detect(var_name, "^tot_effect") ~ "$\\tau_i(1)$",
+        TRUE ~ "other"
+      )
+      if (export_tikz == FALSE) effect_label <- latex2exp::TeX(effect_label)
+    } else {
+      effect_label <- ""
+    }
+    
     
     plot_hist_effects(
-      x = x, var_name = var_name, tikz = export_tikz, 
-      fill = colour_methods[i],
-      printed_method = printed_method, 
+      x = x,
+      var_name = var_name,
+      tikz = export_tikz,
+      fill = colour,
+      method_main = method,
       x_lim = x_lim_list[[var_name]],
-      print_main = i == 1,
-      print_x_axis = i == 5
+      effect_ylab = effect_label,
+      print_method_main = (var_name == "delta_0_i"),      # first row only
+      print_x_axis = (var_name == "tot_effect"),          # bottom row only
+      print_y_axis = TRUE
     )
   }
 }
@@ -2159,8 +2176,9 @@ tb_indiv_0_short |>
 #| fig-height: 3
 export_tikz <- FALSE
 file_name <- "gaussian-tau-two-indiv"
-width_tikz <- 3.3
-height_tikz <- 1.55
+scale <- 1.45
+width_tikz <- 3.3*scale
+height_tikz <- 1.55*scale
 if (export_tikz == TRUE)
   tikz(paste0("figs/", file_name, ".tex"), width = width_tikz, height = height_tikz)
 

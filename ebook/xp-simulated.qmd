@@ -70,7 +70,7 @@ colGpe0 <- col_group[1]
 colGpet <- col_group[3]
 loadfonts(device = "pdf", quiet = TRUE)
 font_size <- 20
-font_family <- "CMU Serif"
+font_family <- "serif"
 
 path <- "./figs/"
 if (!dir.exists(path)) dir.create(path)
@@ -809,10 +809,10 @@ colour_methods <- c(
 
 export_tikz <- FALSE
 
-
+scale <- 1.27
 file_name <- "xp-simulated-indiv-effects"
-width_tikz <- 2.3
-height_tikz <- 1.7
+width_tikz <- 2.3*scale
+height_tikz <- 1.7*scale
 if (export_tikz == TRUE)
   tikz(paste0("figs/", file_name, ".tex"), width = width_tikz, height = height_tikz)
 
@@ -1133,7 +1133,9 @@ p <- ggplot(
   geom_violin(
     #mapping = aes(x = value, y = method, fill = method),
     mapping = aes(fill = Method),
-    draw_quantiles = c(.25, .5, .75)) +
+    quantiles =  c(.25, .5, .75),
+    quantile.linetype = "solid"
+  ) +
   labs(x = NULL, y = NULL)
 
 if (export_pdf == TRUE) {
@@ -1172,7 +1174,7 @@ if (export_pdf == TRUE) {
         breaks = scales::pretty_breaks(n = 3)
       ),
     filename = "xp-simulated-violin-mc", path = "figs/", 
-    width = 3.3, height = 1.3,
+    width = 1.27*3.3, height = 1.27*1.3,
     crop = TRUE
   )
   
