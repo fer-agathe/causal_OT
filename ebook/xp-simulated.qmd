@@ -23,6 +23,7 @@ library(randomForest)
 library(grf)
 library(cluster)
 library(dplyr)
+library(fairadapt)
 
 # Also required:
 # install.packages(mlr3fairness)
@@ -63,7 +64,8 @@ colour_methods <- c(
     "OT" = "#CC79A7", 
     "OT-M" = "#009E73",
     "skh" = "darkgray",
-    "seq_1" = "#0072B2", "seq_2" = "#D55E00"
+    "seq_1" = "#0072B2", "seq_2" = "#D55E00",
+    "fairadapt_1" = "#9966FF", "fairadapt_2" = "#7CAE00"
   )
 colGpe1 <- col_group[2]
 colGpe0 <- col_group[1]
@@ -566,11 +568,38 @@ Let us load the results of the estimation:
 load("../output/seq-t-synthetic.rda")
 ```
 
+### Fairadapt
+
+```{r define-fairadapt}
+adj_reduced <- adj[-5,-5]
+ind_0 <- which(tb_estim$A == 0)
+data <- tb_estim |> select(A, X1, X2, X3)
+data$A <- factor(data$A, levels = c("1", "0"))
+
+fpt_model_0_to_1 <- fairadapt(
+    X3 ~ ., 
+    train.data = data,
+    prot.attr = "A", adj.mat = adj_reduced,
+    quant.method = rangerQuants
+)
+adapt_data_0 <- adaptedData(fpt_model_0_to_1)
+adapt_data_0 <- adapt_data_0 |> select(-A)
+adapt_data_0 <- adapt_data_0[ind_0,]
+
+save(adapt_data_0, file = "../output/fairadapt-rf-synthetic.rda")
+```
+
+Let us load the results of the estimation:
+```{r load-fairadapt}
+load("../output/fairadapt-rf-synthetic.rda")
+```
+
 ## Measuring the Causal Effect
 
 ### With Causal Mediation Analysis
 
 Let us use the `multimed()`{.R} function from {mediation} to estimate the direct effect:
+
 - A -> Y,
 and the different indirect effects:
 - A -> X1 -> Y,
@@ -730,6 +759,28 @@ cbind(
 )
 ```
 
+### With Fairadapt
+
+```{r define-causal_effects_fairadapt}
+#| warning: false
+#| message: false
+
+causal_effects_fairadapt <- causal_effects_cf(
+  data_untreated = tb_untreated, 
+  data_treated = tb_treated,
+  data_cf_untreated = as_tibble(adapt_data_0), 
+  Y_name = Y_name, 
+  A_name = A_name, 
+  A_untreated = A_untreated
+)
+
+cbind(
+  delta_0 = causal_effects_fairadapt$delta_0,
+  zeta_1 = causal_effects_fairadapt$zeta_1, 
+  tot_effect = causal_effects_fairadapt$tot_effect
+)
+```
+
 
 Let us visualize the distribution on the individuals effects for each transport-based method, in @fig-compas-dist-indiv-effects (frequency on the y-axis).
 ```{r}
@@ -804,7 +855,8 @@ colour_methods <- c(
   "OT-M" = "#009E73",
   "skh" = "darkgray",
   "seq_1" = "#0072B2", 
-  "seq_2" = "#D55E00"
+  #"seq_2" = "#D55E00",
+  "fairadapt" = "#9966FF"
 )
 
 export_tikz <- FALSE
@@ -817,20 +869,22 @@ if (export_tikz == TRUE)
   tikz(paste0("figs/", file_name, ".tex"), width = width_tikz, height = height_tikz)
 
 layout(
-  matrix(1:9, byrow = TRUE, ncol = 3),
+  matrix(1:12, byrow = TRUE, ncol = 3),
   widths = c(1, rep(.9, 2)), heights = c(1, rep(.72, 2))
 )
 
-for (i in 1:3) {
+for (i in 1:4) {
   x <- case_when(
     i == 1 ~ causal_effects_ot,
     i == 2 ~ causal_effects_sink_ot,
-    i == 3 ~ causal_effects_st
+    i == 3 ~ causal_effects_st,
+    i == 4 ~ causal_effects_fairadapt
   )
   method <- case_when(
     i == 1 ~ "OT-M",
     i == 2 ~ "SKH",
-    i == 3 ~ "ST"
+    i == 3 ~ "ST",
+    i == 4 ~ "FPT"
   )
   
   for (var_name in c("delta_0_i", "zeta_1_i", "tot_effect")) {
@@ -853,7 +907,7 @@ for (i in 1:3) {
       printed_method = printed_method, 
       x_lim = x_lim_list[[var_name]],
       print_main = i == 1,
-      print_x_axis = i == 3
+      print_x_axis = i == 4
     )
   }
 }
@@ -880,6 +934,7 @@ seeds <- 1:200
 res_simul_opt_trans <- vector(mode = "list", length = length(seeds))
 res_simul_sink_trans <- vector(mode = "list", length = length(seeds))
 res_simul_seq_trans <- vector(mode = "list", length = length(seeds))
+res_simul_fairadapt <- vector(mode = "list", length = length(seeds))
 res_simul_effects <- vector(mode = "list", length = length(seeds))
 ```
 
@@ -948,6 +1003,22 @@ for (i in 1:length(seeds)) {
     cl = cl
   )
   res_simul_seq_trans[[i]] <- sequential_transport$transported
+
+  # Fairadapt
+  adj_reduced <- adj[-5,-5]
+  ind_0 <- which(tb$A == 0)
+  data <- tb |> select(A, X1, X2, X3)
+  data$A <- factor(data$A, levels = c("1", "0"))
+  
+  fpt_model_0_to_1 <- fairadapt(
+      X3 ~ ., 
+      train.data = data,
+      prot.attr = "A", adj.mat = adj_reduced,
+      quant.method = rangerQuants
+  )
+  adapt_data_0 <- adaptedData(fpt_model_0_to_1)
+  adapt_data_0 <- adapt_data_0 |> select(-A)
+  res_simul_fairadapt[[i]] <- adapt_data_0[ind_0,]
   
   tb_untreated <- tb |> filter(!!sym(A_name) == !!A_untreated)
   tb_treated <- tb |> filter(!!sym(A_name) != !!A_untreated)
@@ -1032,6 +1103,15 @@ for (i in 1:length(seeds)) {
     A_name = A_name, 
     A_untreated = A_untreated
   )
+  ## Fairadapt
+  causal_effects_fairadapt <- causal_effects_cf(
+    data_untreated = tb_untreated, 
+    data_treated = tb_treated,
+    data_cf_untreated = as_tibble(adapt_data_0[ind_0,]), 
+    Y_name = Y_name, 
+    A_name = A_name, 
+    A_untreated = A_untreated
+  )
   
   res_simul_effects[[i]] <- tibble(
     seed = seed,
@@ -1046,7 +1126,10 @@ for (i in 1:length(seeds)) {
     tot_effect_sink_ot = causal_effects_sink_ot$tot_effect,
     delta_0_st = causal_effects_st$delta_0,
     zeta_1_st = causal_effects_st$zeta_1, 
-    tot_effect_st = causal_effects_st$tot_effect
+    tot_effect_st = causal_effects_st$tot_effect,
+    delta_0_fairadapt = causal_effects_fairadapt$delta_0,
+    zeta_1_fairadapt = causal_effects_fairadapt$zeta_1, 
+    tot_effect_fairadapt = causal_effects_fairadapt$tot_effect
   )
 }
 
@@ -1054,6 +1137,7 @@ save(
   res_simul_opt_trans, 
   res_simul_sink_trans, 
   res_simul_seq_trans, 
+  res_simul_fairadapt,
   res_simul_effects, 
   file = "../output/res_simul.rda"
 )

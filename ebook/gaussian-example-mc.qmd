@@ -32,7 +32,9 @@ col_group <- c("#00A08A","#F2AD00", "#1b95e0")
 colour_methods <- c(
     "OT" = "#CC79A7", "OT-M" = "#009E73",
     "skh" = "darkgray",
-    "seq_1" = "#0072B2", "seq_2" = "#D55E00"
+    "seq_1" = "#0072B2", "seq_2" = "#D55E00",
+    "fairadapt_1" = "#9966FF",
+    "fairadapt_2" = "#7CAE00"
   )
 colGpe1 <- col_group[2]
 colGpe0 <- col_group[1]
@@ -303,6 +305,84 @@ sequential_transport_21 <- function(X, M_source, S_source, M_target, S_target) {
   cbind(T1x, T2x)
 }
 
+fairadapt_12 <- function(df, quant_method = c("rangerQuants", "linearQuants")) {
+  adj_12 <- matrix(
+    c(0, 1, 1,
+      0, 0, 1,
+      0, 0, 0),
+    ncol = 3, 
+    dimnames = rep(list(c("A","X1","X2")), 2),
+    byrow = TRUE
+  )
+  
+  ind_0 <- which(df$A == 0)
+  data <- df |> select(A, X1, X2)
+  # A=0 (factuals) --> A=1 (counterfactuals)
+  data$A <- factor(data$A, levels = c("1", "0"))
+ 
+  fpt_model_0_to_1 <- fairadapt(
+    X2 ~ ., 
+    train.data = data,
+    prot.attr = "A", adj.mat = adj_12,
+    quant.method = ifelse(quant_method == "rangerQuants", rangerQuants, linearQuants)
+  )
+  
+  adapt_df_0 <- adaptedData(fpt_model_0_to_1)
+  
+  # A=0 (factuals) --> A=1 (counterfactuals)
+  data$A <- factor(data$A, levels = c("0", "1"))
+  fpt_model_1_to_0 <- fairadapt(
+    X2 ~ ., 
+    train.data = data,
+    prot.attr = "A", adj.mat = adj_12,
+    quant.method = ifelse(quant_method == "rangerQuants", rangerQuants, linearQuants)
+  )
+  adapt_df_1 <- adaptedData(fpt_model_1_to_0)
+  
+  list(
+    adapt_df_0 = adapt_df_0[ind_0, !(names(adapt_df_0) %in% "A")],
+    adapt_df_1 = adapt_df_1[-ind_0, !(names(adapt_df_1) %in% "A")]
+  )
+}
+
+fairadapt_21 <- function(df, quant_method = c("rangerQuants", "linearQuants")) {
+  adj_21 <- matrix(
+    c(0, 1, 1,
+      0, 0, 0,
+      0, 1, 0),
+    ncol = 3, 
+    dimnames = rep(list(c("A","X1","X2")), 2),
+    byrow = TRUE
+  )
+  
+  ind_0 <- which(df$A == 0)
+  data <- df |> select(A, X1, X2)
+  # A=0 (factuals) --> A=1 (counterfactuals)
+  data$A <- factor(data$A, levels = c("1", "0"))
+  fpt_model_0_to_1 <- fairadapt(
+    X1 ~ ., 
+    train.data = data,
+    prot.attr = "A", adj.mat = adj_21,
+    quant.method = ifelse(quant_method == "rangerQuants", rangerQuants, linearQuants)
+  )
+  adapt_df_0 <- adaptedData(fpt_model_0_to_1)
+  
+  # A=0 (factuals) --> A=1 (counterfactuals)
+  data$A <- factor(data$A, levels = c("0", "1"))
+  fpt_model_1_to_0 <- fairadapt(
+    X1 ~ ., 
+    train.data = data,
+    prot.attr = "A", adj.mat = adj_21,
+    quant.method = ifelse(quant_method == "rangerQuants", rangerQuants, linearQuants)
+  )
+  adapt_df_1 <- adaptedData(fpt_model_1_to_0)
+  
+  list(
+    adapt_df_0 = adapt_df_0[ind_0, !(names(adapt_df_0) %in% "A")],
+    adapt_df_1 = adapt_df_1[-ind_0, !(names(adapt_df_1) %in% "A")]
+  )
+}
+
 ## Causal Effect----
 #' Estimation of total causal effect using counterfactuals.
 #' 
@@ -508,6 +588,32 @@ sim_f <- function(n0 = 250,
     X = X1, M_source = Mu1, S_source = Sigma1, M_target = Mu0, S_target = Sigma0
   )
   
+  ## With fairadapt RF
+  
+  X_fairadapt_12_rf <- fairadapt_12(df = df, quant_method = "rangerQuants")
+  X_fairadapt_21_rf <- fairadapt_21(df = df, quant_method = "rangerQuants")
+  # Transport from group 0 to group 1: X1 then X2 | X1
+  X0_fairadapt_12_rf <- X_fairadapt_12_rf[[1]]
+  # Transport from group 1 to group 0: X1 then X2 | X1
+  X1_fairadapt_12_rf <- X_fairadapt_12_rf[[2]]
+  # Transport from group 0 to group 1: X2 then X1 | X2
+  X0_fairadapt_21_rf <- X_fairadapt_21_rf[[1]]
+  # Transport from group 1 to group 0: X2 then X1 | X2
+  X1_fairadapt_21_rf <- X_fairadapt_21_rf[[2]]
+
+  ## With fairadapt linear
+  
+  X_fairadapt_12_lin <- fairadapt_12(df = df, quant_method = "linearQuants")
+  X_fairadapt_21_lin <- fairadapt_21(df = df, quant_method = "linearQuants")
+  # Transport from group 0 to group 1: X1 then X2 | X1
+  X0_fairadapt_12_lin <- X_fairadapt_12_lin[[1]]
+  # Transport from group 1 to group 0: X1 then X2 | X1
+  X1_fairadapt_12_lin <- X_fairadapt_12_lin[[2]]
+  # Transport from group 0 to group 1: X2 then X1 | X2
+  X0_fairadapt_21_lin <- X_fairadapt_21_lin[[1]]
+  # Transport from group 1 to group 0: X2 then X1 | X2
+  X1_fairadapt_21_lin <- X_fairadapt_21_lin[[2]]
+  
   # 3. Measuring Total Causal Effect
   tb <- df[, c("Y", "A", "X1", "X2")]
   A_name <- "A"
@@ -594,6 +700,46 @@ sim_f <- function(n0 = 250,
     A_untreated = A_untreated
   )
   
+  # With fairadapt counterfactuals RF
+  causal_effect_fairadapt_12_rf <- causal_effects_cf(
+    data_untreated = tb_untreated, 
+    data_treated = tb_treated,
+    data_cf_untreated = as_tibble(X0_fairadapt_12_rf),
+    data_cf_treated = as_tibble(X1_fairadapt_12_rf),
+    Y_name = Y_name, 
+    A_name = A_name, 
+    A_untreated = A_untreated
+  )
+  causal_effect_fairadapt_21_rf <- causal_effects_cf(
+    data_untreated = tb_untreated, 
+    data_treated = tb_treated,
+    data_cf_untreated = as_tibble(X0_fairadapt_21_rf),
+    data_cf_treated = as_tibble(X1_fairadapt_21_rf),
+    Y_name = Y_name, 
+    A_name = A_name, 
+    A_untreated = A_untreated
+  )
+
+# With fairadapt counterfactuals linear
+  causal_effect_fairadapt_12_lin <- causal_effects_cf(
+    data_untreated = tb_untreated, 
+    data_treated = tb_treated,
+    data_cf_untreated = as_tibble(X0_fairadapt_12_lin),
+    data_cf_treated = as_tibble(X1_fairadapt_12_lin),
+    Y_name = Y_name, 
+    A_name = A_name, 
+    A_untreated = A_untreated
+  )
+  causal_effect_fairadapt_21_lin <- causal_effects_cf(
+    data_untreated = tb_untreated, 
+    data_treated = tb_treated,
+    data_cf_untreated = as_tibble(X0_fairadapt_21_lin),
+    data_cf_treated = as_tibble(X1_fairadapt_21_lin),
+    Y_name = Y_name, 
+    A_name = A_name, 
+    A_untreated = A_untreated
+  )
+  
   tibble(
     # Mediation
     delta_0_med = delta_0_med,
@@ -646,6 +792,42 @@ sim_f <- function(n0 = 250,
     zeta_1_sot_21 = causal_effect_sot_21$zeta_1,
     tot_effect_sot_21 = causal_effect_sot_21$tot_effect,
     tot_effect_sot_21_obs = causal_effect_sot_21$tot_effect_obs,
+    # fairadapt 12 RF
+    delta_0_fairadapt_12_rf = causal_effect_fairadapt_12_rf$delta_0,
+    delta_1_fairadapt_12_rf = causal_effect_fairadapt_12_rf$delta_1,
+    delta_0_fairadapt_12_obs_rf = causal_effect_fairadapt_12_rf$delta_0_obs,
+    delta_1_fairadapt_12_obs_rf = causal_effect_fairadapt_12_rf$delta_1_obs,
+    zeta_0_fairadapt_12_rf = causal_effect_fairadapt_12_rf$zeta_0,
+    zeta_1_fairadapt_12_rf = causal_effect_fairadapt_12_rf$zeta_1,
+    tot_effect_fairadapt_12_rf = causal_effect_fairadapt_12_rf$tot_effect,
+    tot_effect_fairadapt_12_obs_rf = causal_effect_fairadapt_12_rf$tot_effect_obs,
+    # fairadapt 21 RF
+    delta_0_fairadapt_21_rf = causal_effect_fairadapt_21_rf$delta_0,
+    delta_1_fairadapt_21_rf = causal_effect_fairadapt_21_rf$delta_1,
+    delta_0_fairadapt_21_obs_rf = causal_effect_fairadapt_21_rf$delta_0_obs,
+    delta_1_fairadapt_21_obs_rf = causal_effect_fairadapt_21_rf$delta_1_obs,
+    zeta_0_fairadapt_21_rf = causal_effect_fairadapt_21_rf$zeta_0,
+    zeta_1_fairadapt_21_rf = causal_effect_fairadapt_21_rf$zeta_1,
+    tot_effect_fairadapt_21_rf = causal_effect_fairadapt_21_rf$tot_effect,
+    tot_effect_fairadapt_21_obs_rf = causal_effect_fairadapt_21_rf$tot_effect_obs,
+    # fairadapt 12 linear
+    delta_0_fairadapt_12_lin = causal_effect_fairadapt_12_lin$delta_0,
+    delta_1_fairadapt_12_lin = causal_effect_fairadapt_12_lin$delta_1,
+    delta_0_fairadapt_12_obs_lin = causal_effect_fairadapt_12_lin$delta_0_obs,
+    delta_1_fairadapt_12_obs_lin = causal_effect_fairadapt_12_lin$delta_1_obs,
+    zeta_0_fairadapt_12_lin = causal_effect_fairadapt_12_lin$zeta_0,
+    zeta_1_fairadapt_12_lin = causal_effect_fairadapt_12_lin$zeta_1,
+    tot_effect_fairadapt_12_lin = causal_effect_fairadapt_12_lin$tot_effect,
+    tot_effect_fairadapt_12_obs_lin = causal_effect_fairadapt_12_lin$tot_effect_obs,
+    # fairadapt 21 linear
+    delta_0_fairadapt_21_lin = causal_effect_fairadapt_21_lin$delta_0,
+    delta_1_fairadapt_21_lin = causal_effect_fairadapt_21_lin$delta_1,
+    delta_0_fairadapt_21_obs_lin = causal_effect_fairadapt_21_lin$delta_0_obs,
+    delta_1_fairadapt_21_obs_lin = causal_effect_fairadapt_21_lin$delta_1_obs,
+    zeta_0_fairadapt_21_lin = causal_effect_fairadapt_21_lin$zeta_0,
+    zeta_1_fairadapt_21_lin = causal_effect_fairadapt_21_lin$zeta_1,
+    tot_effect_fairadapt_21_lin = causal_effect_fairadapt_21_lin$tot_effect,
+    tot_effect_fairadapt_21_obs_lin = causal_effect_fairadapt_21_lin$tot_effect_obs,
     n0 = n0,
     n1 = n1,
     seed = seed,
@@ -869,6 +1051,7 @@ clusterEvalQ(cl, {
   library(mnormt)
   library(expm)
   library(randomForest)
+  library(fairadapt)
 }) |>
   invisible()
 
@@ -877,7 +1060,8 @@ clusterExport(
     "gen_data", "compute_ot_map", "apply_ot_transport",
     "transport_regul", "transport_many_to_one",
     "sequential_transport_12", "sequential_transport_21",
-    "causal_effects_cf", "sim_f", "grid_params"
+    "causal_effects_cf", "sim_f", "grid_params", "fairadapt_12", 
+    "fairadapt_21"
   )
 )
 
@@ -953,7 +1137,7 @@ load("../output/res_sim-gaussian-mc.rda")
 #| code-summary: Codes to create the Figure.
 a1 <- 2
 a2 <- -1.5
-export_pdf <- TRUE
+export_pdf <- FALSE
 
 x_lab <- "$\\alpha$ (distance $=2\\alpha\\sqrt{2}$)"
 y_lab <- "Distance to $\\bar\\tau$"
@@ -967,12 +1151,14 @@ data_plot <- res_sim |>
   dplyr::select(
     n0, n1, seed, a, mu0, mu1,
     tot_effect_med, tot_effect_ot, tot_effect_tmatch,
-    tot_effect_skh, tot_effect_sot_12, tot_effect_sot_21
+    tot_effect_skh, tot_effect_sot_12, tot_effect_sot_21,
+    tot_effect_fairadapt_12_lin, tot_effect_fairadapt_21_lin
   ) |> 
   pivot_longer(
     cols = c(
       tot_effect_med, tot_effect_ot, tot_effect_tmatch,
-      tot_effect_skh, tot_effect_sot_12, tot_effect_sot_21
+      tot_effect_skh, tot_effect_sot_12, tot_effect_sot_21,
+      tot_effect_fairadapt_12_lin, tot_effect_fairadapt_21_lin
     ), 
     names_to = "type", values_to = "tau"
   ) |> 
@@ -981,9 +1167,10 @@ data_plot <- res_sim |>
       type,
       levels = c(
         "tot_effect_med", "tot_effect_ot", "tot_effect_tmatch",
-        "tot_effect_skh", "tot_effect_sot_12", "tot_effect_sot_21"
+        "tot_effect_skh", "tot_effect_sot_12", "tot_effect_sot_21",
+        "tot_effect_fairadapt_12_lin", "tot_effect_fairadapt_21_lin"
       ),
-      labels = c("CM", "OT", "OT-M", "SKH", "ST(1)", "ST(2)")
+      labels = c("CM", "OT", "OT-M", "SKH", "ST(1)", "ST(2)", "FPT(1)", "FPT(2)")
     ),
     dist_to_causal_effect = (a1+a2) * (a*mu1 - a*mu0) + 3 - tau
   )
@@ -1006,7 +1193,9 @@ p <- ggplot(
       "OT-M" = colour_methods[["OT-M"]], 
       "SKH" = colour_methods[["skh"]], 
       "ST(1)" =  colour_methods[["seq_1"]],
-      "ST(2)" =  colour_methods[["seq_2"]]
+      "ST(2)" =  colour_methods[["seq_2"]],
+      "FPT(1)" =  colour_methods[["fairadapt_1"]],
+      "FPT(2)" =  colour_methods[["fairadapt_2"]]
     ),
     guide = "none",
   ) +
@@ -1041,7 +1230,7 @@ p
 #| fig-height: 6
 #| code-fold: true
 #| code-summary: Codes to create the Figure.
-export_pdf <- TRUE
+export_pdf <- FALSE
 
 x_lab <- "$\\alpha$ (distance $=2\\alpha\\sqrt{2}$)"
 y_lab <- "Distance to $\\bar\\delta(0)$"
@@ -1055,12 +1244,14 @@ data_plot <- res_sim |>
   dplyr::select(
     n0, n1, seed, a, mu0, mu1,
     delta_0_med, delta_0_ot, delta_0_tmatch,
-    delta_0_skh, delta_0_sot_12, delta_0_sot_21
+    delta_0_skh, delta_0_sot_12, delta_0_sot_21,
+    delta_0_fairadapt_12_lin, delta_0_fairadapt_21_lin
   ) |> 
   pivot_longer(
     cols = c(
       delta_0_med, delta_0_ot, delta_0_tmatch,
-      delta_0_skh, delta_0_sot_12, delta_0_sot_21
+      delta_0_skh, delta_0_sot_12, delta_0_sot_21,
+      delta_0_fairadapt_12_lin, delta_0_fairadapt_21_lin
     ), 
     names_to = "type", values_to = "val"
   ) |> 
@@ -1069,9 +1260,10 @@ data_plot <- res_sim |>
       type,
       levels = c(
         "delta_0_med", "delta_0_ot", "delta_0_tmatch",
-        "delta_0_skh", "delta_0_sot_12", "delta_0_sot_21"
+        "delta_0_skh", "delta_0_sot_12", "delta_0_sot_21",
+        "delta_0_fairadapt_12_lin", "delta_0_fairadapt_21_lin"
       ),
-      labels = c("CM", "OT", "OT-M", "SKH", "ST(1)", "ST(2)")
+      labels = c("CM", "OT", "OT-M", "SKH", "ST(1)", "ST(2)", "FPT(1)", "FPT(2)")
     ),
     dist_to_theo_val = ((a1+a2)*(a*mu1-a*mu0)) - val
   )
@@ -1094,7 +1286,9 @@ p <- ggplot(
       "OT-M" = colour_methods[["OT-M"]], 
       "SKH" = colour_methods[["skh"]], 
       "ST(1)" =  colour_methods[["seq_1"]],
-      "ST(2)" =  colour_methods[["seq_2"]]
+      "ST(2)" =  colour_methods[["seq_2"]],
+      "FPT(1)" =  colour_methods[["fairadapt_1"]],
+      "FPT(2)" =  colour_methods[["fairadapt_2"]]
     ),
     guide = "none"
   ) +
@@ -1132,12 +1326,14 @@ data_plot <- res_sim |>
   dplyr::select(
     n0, n1, seed, a, mu0, mu1,
     delta_1_med, delta_1_ot, delta_1_tmatch,
-    delta_1_skh, delta_1_sot_12, delta_1_sot_21
+    delta_1_skh, delta_1_sot_12, delta_1_sot_21,
+    delta_1_fairadapt_12_lin, delta_1_fairadapt_21_lin
   ) |> 
   pivot_longer(
     cols = c(
     delta_1_med, delta_1_ot, delta_1_tmatch,
-    delta_1_skh, delta_1_sot_12, delta_1_sot_21), 
+    delta_1_skh, delta_1_sot_12, delta_1_sot_21,
+    delta_1_fairadapt_12_lin, delta_1_fairadapt_21_lin), 
     names_to = "type", values_to = "val"
   ) |> 
   mutate(
@@ -1145,9 +1341,10 @@ data_plot <- res_sim |>
       type,
       levels = c(
         "delta_1_med", "delta_1_ot", "delta_1_tmatch",
-        "delta_1_skh", "delta_1_sot_12", "delta_1_sot_21"
+        "delta_1_skh", "delta_1_sot_12", "delta_1_sot_21",
+        "delta_1_fairadapt_12_lin", "delta_1_fairadapt_21_lin"
       ),
-      labels = c("CM", "OT", "OT-M", "SKH", "ST(1)", "ST(2)")
+      labels = c("CM", "OT", "OT-M", "SKH", "ST(1)", "ST(2)", "FPT(1)", "FPT(2)")
     ),
     dist_to_theo_val = ((a1+a2)*(a*mu1-a*mu0)) - val
   )
@@ -1169,7 +1366,9 @@ ggplot(
       "OT-M" = colour_methods[["OT-M"]], 
       "SKH" = colour_methods[["skh"]], 
       "ST(1)" =  colour_methods[["seq_1"]],
-      "ST(2)" =  colour_methods[["seq_2"]]
+      "ST(2)" =  colour_methods[["seq_2"]],
+      "FPT(1)" =  colour_methods[["fairadapt_1"]],
+      "FPT(2)" =  colour_methods[["fairadapt_2"]]
     ),
     guide = "none"
   ) +
@@ -1194,11 +1393,13 @@ data_plot <- res_sim |>
   dplyr::select(
     n0, n1, seed, a, mu0, mu1,
     zeta_0_med, zeta_0_ot, zeta_0_tmatch,
-    zeta_0_skh, zeta_0_sot_12, zeta_0_sot_21
+    zeta_0_skh, zeta_0_sot_12, zeta_0_sot_21,
+    zeta_0_fairadapt_12_lin, zeta_0_fairadapt_21_lin
   ) |> 
   pivot_longer(
     cols = c(zeta_0_med, zeta_0_ot, zeta_0_tmatch,
-    zeta_0_skh, zeta_0_sot_12, zeta_0_sot_21), 
+    zeta_0_skh, zeta_0_sot_12, zeta_0_sot_21,
+    zeta_0_fairadapt_12_lin, zeta_0_fairadapt_21_lin), 
     names_to = "type", values_to = "val"
   ) |> 
   mutate(
@@ -1206,9 +1407,10 @@ data_plot <- res_sim |>
       type,
       levels = c(
         "zeta_0_med", "zeta_0_ot", "zeta_0_tmatch",
-        "zeta_0_skh", "zeta_0_sot_12", "zeta_0_sot_21"
+        "zeta_0_skh", "zeta_0_sot_12", "zeta_0_sot_21",
+        "zeta_0_fairadapt_12_lin", "zeta_0_fairadapt_21_lin"
       ),
-      labels = c("CM", "OT", "OT-M", "SKH", "ST(1)", "ST(2)")
+      labels = c("CM", "OT", "OT-M", "SKH", "ST(1)", "ST(2)", "FPT(1)", "FPT(2)")
     ),
     dist_to_theo_val = 3 - val
   )
@@ -1230,7 +1432,9 @@ ggplot(
       "OT-M" = colour_methods[["OT-M"]], 
       "SKH" = colour_methods[["skh"]], 
       "ST(1)" =  colour_methods[["seq_1"]],
-      "ST(2)" =  colour_methods[["seq_2"]]
+      "ST(2)" =  colour_methods[["seq_2"]],
+      "FPT(1)" =  colour_methods[["fairadapt_1"]],
+      "FPT(2)" =  colour_methods[["fairadapt_2"]]
     ),
     guide = "none"
   ) +
@@ -1253,7 +1457,7 @@ p
 #| fig-height: 6
 #| code-fold: true
 #| code-summary: Codes to create the Figure.
-export_pdf <- TRUE
+export_pdf <- FALSE
 
 x_lab <- "$\\alpha$ (distance $=2\\alpha\\sqrt{2}$)"
 y_lab <- "Distance to $\\bar\\zeta(1)$"
@@ -1267,12 +1471,14 @@ data_plot <- res_sim |>
   dplyr::select(
     n0, n1, seed, a, mu0, mu1,
     zeta_1_med, zeta_1_ot, zeta_1_tmatch,
-    zeta_1_skh, zeta_1_sot_12, zeta_1_sot_21
+    zeta_1_skh, zeta_1_sot_12, zeta_1_sot_21,
+    zeta_1_fairadapt_12_lin, zeta_1_fairadapt_21_lin
   ) |> 
   pivot_longer(
     cols = c(
       zeta_1_med, zeta_1_ot, zeta_1_tmatch,
-      zeta_1_skh, zeta_1_sot_12, zeta_1_sot_21), 
+      zeta_1_skh, zeta_1_sot_12, zeta_1_sot_21,
+      zeta_1_fairadapt_12_lin, zeta_1_fairadapt_21_lin), 
     names_to = "type", values_to = "val"
   ) |> 
   mutate(
@@ -1280,9 +1486,10 @@ data_plot <- res_sim |>
       type,
       levels = c(
         "zeta_1_med", "zeta_1_ot", "zeta_1_tmatch",
-        "zeta_1_skh", "zeta_1_sot_12", "zeta_1_sot_21"
+        "zeta_1_skh", "zeta_1_sot_12", "zeta_1_sot_21",
+        "zeta_1_fairadapt_12_lin", "zeta_1_fairadapt_21_lin"
       ),
-      labels = c("CM", "OT", "OT-M", "SKH", "ST(1)", "ST(2)")
+      labels = c("CM", "OT", "OT-M", "SKH", "ST(1)", "ST(2)", "FPT(1)", "FPT(2)")
     ),
     dist_to_theo_val = 3 - val
   )
@@ -1304,7 +1511,9 @@ p <- ggplot(
       "OT-M" = colour_methods[["OT-M"]], 
       "SKH" = colour_methods[["skh"]], 
       "ST(1)" =  colour_methods[["seq_1"]],
-      "ST(2)" =  colour_methods[["seq_2"]]
+      "ST(2)" =  colour_methods[["seq_2"]],
+      "FPT(1)" =  colour_methods[["fairadapt_1"]],
+      "FPT(2)" =  colour_methods[["fairadapt_2"]]
     ),
     guide = "none"
   ) +
@@ -1343,7 +1552,7 @@ A more condensed figure, which focuses on $\bar{\delta}(0)$,  $\bar{\zeta}(1)$, 
 #| code-summary: Codes to create the Figure.
 a1 <- 2
 a2 <- -1.5
-export_pdf <- TRUE
+export_pdf <- FALSE
 
 x_lab <- "$\\alpha$ (distance $=2\\alpha\\sqrt{2}$)"
 y_lab <- "Estimation error"
@@ -1359,12 +1568,14 @@ data_plot_tau <- res_sim |>
   dplyr::select(
     n0, n1, seed, a, mu0, mu1,
     tot_effect_med, tot_effect_ot, tot_effect_tmatch,
-    tot_effect_skh, tot_effect_sot_12, tot_effect_sot_21
+    tot_effect_skh, tot_effect_sot_12, tot_effect_sot_21,
+    tot_effect_fairadapt_12_lin, tot_effect_fairadapt_21_lin
   ) |> 
   pivot_longer(
     cols = c(
       tot_effect_med, tot_effect_ot, tot_effect_tmatch,
-      tot_effect_skh, tot_effect_sot_12, tot_effect_sot_21
+      tot_effect_skh, tot_effect_sot_12, tot_effect_sot_21,
+      tot_effect_fairadapt_12_lin, tot_effect_fairadapt_21_lin
     ), 
     names_to = "type", values_to = "tau"
   ) |> 
@@ -1373,9 +1584,10 @@ data_plot_tau <- res_sim |>
       type,
       levels = c(
         "tot_effect_med", "tot_effect_ot", "tot_effect_tmatch",
-        "tot_effect_skh", "tot_effect_sot_12", "tot_effect_sot_21"
+        "tot_effect_skh", "tot_effect_sot_12", "tot_effect_sot_21",
+        "tot_effect_fairadapt_12_lin", "tot_effect_fairadapt_21_lin"
       ),
-      labels = c("CM", "OT", "OT-M", "SKH", "ST(1)", "ST(2)")
+      labels = c("CM", "OT", "OT-M", "SKH", "ST(1)", "ST(2)", "FPT(1)", "FPT(2)")
     ),
     dist_to_causal_effect = (a1+a2) * (a*mu1 - a*mu0) + 3 - tau
   )
@@ -1384,12 +1596,14 @@ data_plot_delta0 <- res_sim |>
   dplyr::select(
     n0, n1, seed, a, mu0, mu1,
     delta_0_med, delta_0_ot, delta_0_tmatch,
-    delta_0_skh, delta_0_sot_12, delta_0_sot_21
+    delta_0_skh, delta_0_sot_12, delta_0_sot_21,
+    delta_0_fairadapt_12_lin, delta_0_fairadapt_21_lin
   ) |> 
   pivot_longer(
     cols = c(
       delta_0_med, delta_0_ot, delta_0_tmatch,
-      delta_0_skh, delta_0_sot_12, delta_0_sot_21
+      delta_0_skh, delta_0_sot_12, delta_0_sot_21,
+      delta_0_fairadapt_12_lin, delta_0_fairadapt_21_lin
     ), 
     names_to = "type", values_to = "val"
   ) |> 
@@ -1398,9 +1612,10 @@ data_plot_delta0 <- res_sim |>
       type,
       levels = c(
         "delta_0_med", "delta_0_ot", "delta_0_tmatch",
-        "delta_0_skh", "delta_0_sot_12", "delta_0_sot_21"
+        "delta_0_skh", "delta_0_sot_12", "delta_0_sot_21",
+        "delta_0_fairadapt_12_lin", "delta_0_fairadapt_21_lin"
       ),
-      labels = c("CM", "OT", "OT-M", "SKH", "ST(1)", "ST(2)")
+      labels = c("CM", "OT", "OT-M", "SKH", "ST(1)", "ST(2)", "FPT(1)", "FPT(2)")
     ),
     dist_to_theo_val = ((a1+a2)*(a*mu1-a*mu0)) - val
   )
@@ -1409,12 +1624,14 @@ data_plot_zeta1 <- res_sim |>
   dplyr::select(
     n0, n1, seed, a, mu0, mu1,
     zeta_1_med, zeta_1_ot, zeta_1_tmatch,
-    zeta_1_skh, zeta_1_sot_12, zeta_1_sot_21
+    zeta_1_skh, zeta_1_sot_12, zeta_1_sot_21,
+    zeta_1_fairadapt_12_lin, zeta_1_fairadapt_21_lin
   ) |> 
   pivot_longer(
     cols = c(
       zeta_1_med, zeta_1_ot, zeta_1_tmatch,
-      zeta_1_skh, zeta_1_sot_12, zeta_1_sot_21), 
+      zeta_1_skh, zeta_1_sot_12, zeta_1_sot_21,
+      zeta_1_fairadapt_12_lin, zeta_1_fairadapt_21_lin), 
     names_to = "type", values_to = "val"
   ) |> 
   mutate(
@@ -1422,9 +1639,10 @@ data_plot_zeta1 <- res_sim |>
       type,
       levels = c(
         "zeta_1_med", "zeta_1_ot", "zeta_1_tmatch",
-        "zeta_1_skh", "zeta_1_sot_12", "zeta_1_sot_21"
+        "zeta_1_skh", "zeta_1_sot_12", "zeta_1_sot_21",
+        "zeta_1_fairadapt_12_lin", "zeta_1_fairadapt_21_lin"
       ),
-      labels = c("CM", "OT", "OT-M", "SKH", "ST(1)", "ST(2)")
+      labels = c("CM", "OT", "OT-M", "SKH", "ST(1)", "ST(2)", "FPT(1)", "FPT(2)")
     ),
     dist_to_theo_val = 3 - val
   )
@@ -1479,7 +1697,9 @@ p <- ggplot(
       "OT-M" = colour_methods[["OT-M"]], 
       "SKH" = colour_methods[["skh"]], 
       "ST(1)" =  colour_methods[["seq_1"]],
-      "ST(2)" =  colour_methods[["seq_2"]]
+      "ST(2)" =  colour_methods[["seq_2"]],
+      "FPT(1)" =  colour_methods[["fairadapt_1"]],
+      "FPT(2)" =  colour_methods[["fairadapt_2"]]
     ),
     guide = "none",
   ) +
@@ -1695,6 +1915,7 @@ clusterEvalQ(cl, {
   library(mnormt)
   library(expm)
   library(randomForest)
+  library(fairadapt)
 }) |>
   invisible()
 
@@ -1703,7 +1924,8 @@ clusterExport(
     "gen_data", "compute_ot_map", "apply_ot_transport",
     "transport_regul", "transport_many_to_one",
     "sequential_transport_12", "sequential_transport_21",
-    "causal_effects_cf", "sim_f", "grid_params"
+    "causal_effects_cf", "sim_f", "grid_params",
+    "fairadapt_12", "fairadapt_21"
   )
 )
 
@@ -1772,12 +1994,14 @@ data_plot <- res_sim_prop |>
   dplyr::select(
     n0, n1, seed, a, mu0, mu1, prop_0,
     tot_effect_med, tot_effect_ot, tot_effect_tmatch,
-    tot_effect_skh, tot_effect_sot_12, tot_effect_sot_21
+    tot_effect_skh, tot_effect_sot_12, tot_effect_sot_21,
+    tot_effect_fairadapt_12_lin, tot_effect_fairadapt_21_lin
   ) |> 
   pivot_longer(
     cols = c(
       tot_effect_med, tot_effect_ot, tot_effect_tmatch,
-      tot_effect_skh, tot_effect_sot_12, tot_effect_sot_21
+      tot_effect_skh, tot_effect_sot_12, tot_effect_sot_21,
+      tot_effect_fairadapt_12_lin, tot_effect_fairadapt_21_lin
     ), 
     names_to = "type", values_to = "tau"
   ) |> 
@@ -1786,9 +2010,10 @@ data_plot <- res_sim_prop |>
       type,
       levels = c(
         "tot_effect_med", "tot_effect_ot", "tot_effect_tmatch",
-        "tot_effect_skh", "tot_effect_sot_12", "tot_effect_sot_21"
+        "tot_effect_skh", "tot_effect_sot_12", "tot_effect_sot_21",
+        "tot_effect_fairadapt_12_lin", "tot_effect_fairadapt_21_lin"
       ),
-      labels = c("CM", "OT", "OT-M", "SKH", "ST(1)", "ST(2)")
+      labels = c("CM", "OT", "OT-M", "SKH", "ST(1)", "ST(2)", "FPT(1)", "FPT(2)")
     ),
     dist_to_causal_effect = (a1+a2) * (a*mu1 - a*mu0) + 3 - tau
   )
@@ -1811,7 +2036,9 @@ p <- ggplot(
       "OT-M" = colour_methods[["OT-M"]], 
       "SKH" = colour_methods[["skh"]], 
       "ST(1)" =  colour_methods[["seq_1"]],
-      "ST(2)" =  colour_methods[["seq_2"]]
+      "ST(2)" =  colour_methods[["seq_2"]],
+      "FPT(1)" =  colour_methods[["fairadapt_1"]],
+      "FPT(2)" =  colour_methods[["fairadapt_2"]]
     ),
     guide = "none",
   ) +
@@ -1864,12 +2091,14 @@ data_plot <- res_sim_prop |>
   dplyr::select(
     n0, n1, seed, a, mu0, mu1, prop_0,
     delta_0_med, delta_0_ot, delta_0_tmatch,
-    delta_0_skh, delta_0_sot_12, delta_0_sot_21
+    delta_0_skh, delta_0_sot_12, delta_0_sot_21,
+    delta_0_fairadapt_12_lin, delta_0_fairadapt_21_lin
   ) |> 
   pivot_longer(
     cols = c(
       delta_0_med, delta_0_ot, delta_0_tmatch,
-      delta_0_skh, delta_0_sot_12, delta_0_sot_21
+      delta_0_skh, delta_0_sot_12, delta_0_sot_21,
+      delta_0_fairadapt_12_lin, delta_0_fairadapt_21_lin
     ), 
     names_to = "type", values_to = "val"
   ) |> 
@@ -1878,9 +2107,10 @@ data_plot <- res_sim_prop |>
       type,
       levels = c(
         "delta_0_med", "delta_0_ot", "delta_0_tmatch",
-        "delta_0_skh", "delta_0_sot_12", "delta_0_sot_21"
+        "delta_0_skh", "delta_0_sot_12", "delta_0_sot_21",
+        "delta_0_fairadapt_12_lin", "delta_0_fairadapt_21_lin"
       ),
-      labels = c("CM", "OT", "OT-M", "SKH", "ST(1)", "ST(2)")
+      labels = c("CM", "OT", "OT-M", "SKH", "ST(1)", "ST(2)", "FPT(1)", "FPT(2)")
     ),
     dist_to_theo_val = ((a1+a2)*(mu1-mu0)) - val
   )
@@ -1903,7 +2133,9 @@ p <- ggplot(
       "OT-M" = colour_methods[["OT-M"]], 
       "SKH" = colour_methods[["skh"]], 
       "ST(1)" =  colour_methods[["seq_1"]],
-      "ST(2)" =  colour_methods[["seq_2"]]
+      "ST(2)" =  colour_methods[["seq_2"]],
+      "FPT(1)" =  colour_methods[["fairadapt_1"]],
+      "FPT(2)" =  colour_methods[["fairadapt_2"]]
     ),
     guide = "none"
   ) +
@@ -1944,12 +2176,14 @@ data_plot <- res_sim_prop |>
   dplyr::select(
     n0, n1, seed, a, mu0, mu1, prop_0,
     delta_1_med, delta_1_ot, delta_1_tmatch,
-    delta_1_skh, delta_1_sot_12, delta_1_sot_21
+    delta_1_skh, delta_1_sot_12, delta_1_sot_21,
+    delta_1_fairadapt_12_lin, delta_1_fairadapt_21_lin
   ) |> 
   pivot_longer(
     cols = c(
     delta_1_med, delta_1_ot, delta_1_tmatch,
-    delta_1_skh, delta_1_sot_12, delta_1_sot_21), 
+    delta_1_skh, delta_1_sot_12, delta_1_sot_21,
+    delta_1_fairadapt_12_lin, delta_1_fairadapt_21_lin), 
     names_to = "type", values_to = "val"
   ) |> 
   mutate(
@@ -1957,9 +2191,10 @@ data_plot <- res_sim_prop |>
       type,
       levels = c(
         "delta_1_med", "delta_1_ot", "delta_1_tmatch",
-        "delta_1_skh", "delta_1_sot_12", "delta_1_sot_21"
+        "delta_1_skh", "delta_1_sot_12", "delta_1_sot_21",
+        "delta_1_fairadapt_12_lin", "delta_1_fairadapt_21_lin"
       ),
-      labels = c("CM", "OT", "OT-M", "SKH", "ST(1)", "ST(2)")
+      labels = c("CM", "OT", "OT-M", "SKH", "ST(1)", "ST(2)", "FPT(1)", "FPT(2)")
     ),
     dist_to_theo_val = ((a1+a2)*(mu1-mu0)) - val
   )
@@ -1981,7 +2216,9 @@ ggplot(
       "OT-M" = colour_methods[["OT-M"]], 
       "SKH" = colour_methods[["skh"]], 
       "ST(1)" =  colour_methods[["seq_1"]],
-      "ST(2)" =  colour_methods[["seq_2"]]
+      "ST(2)" =  colour_methods[["seq_2"]],
+      "FPT(1)" =  colour_methods[["fairadapt_1"]],
+      "FPT(2)" =  colour_methods[["fairadapt_2"]]
     ),
     guide = "none"
   ) +
@@ -2008,11 +2245,13 @@ data_plot <- res_sim_prop |>
   dplyr::select(
     n0, n1, seed, a, mu0, mu1, prop_0,
     zeta_0_med, zeta_0_ot, zeta_0_tmatch,
-    zeta_0_skh, zeta_0_sot_12, zeta_0_sot_21
+    zeta_0_skh, zeta_0_sot_12, zeta_0_sot_21,
+    zeta_0_fairadapt_12_lin, zeta_0_fairadapt_21_lin
   ) |> 
   pivot_longer(
     cols = c(zeta_0_med, zeta_0_ot, zeta_0_tmatch,
-    zeta_0_skh, zeta_0_sot_12, zeta_0_sot_21), 
+    zeta_0_skh, zeta_0_sot_12, zeta_0_sot_21,
+    zeta_0_fairadapt_12_lin, zeta_0_fairadapt_21_lin), 
     names_to = "type", values_to = "val"
   ) |> 
   mutate(
@@ -2020,9 +2259,10 @@ data_plot <- res_sim_prop |>
       type,
       levels = c(
         "zeta_0_med", "zeta_0_ot", "zeta_0_tmatch",
-        "zeta_0_skh", "zeta_0_sot_12", "zeta_0_sot_21"
+        "zeta_0_skh", "zeta_0_sot_12", "zeta_0_sot_21",
+        "zeta_0_fairadapt_12_lin", "zeta_0_fairadapt_21_lin"
       ),
-      labels = c("CM", "OT", "OT-M", "SKH", "ST(1)", "ST(2)")
+      labels = c("CM", "OT", "OT-M", "SKH", "ST(1)", "ST(2)", "FPT(1)", "FPT(2)")
     ),
     dist_to_theo_val = 3 - val
   )
@@ -2044,7 +2284,9 @@ ggplot(
       "OT-M" = colour_methods[["OT-M"]], 
       "SKH" = colour_methods[["skh"]], 
       "ST(1)" =  colour_methods[["seq_1"]],
-      "ST(2)" =  colour_methods[["seq_2"]]
+      "ST(2)" =  colour_methods[["seq_2"]],
+      "FPT(1)" =  colour_methods[["fairadapt_1"]],
+      "FPT(2)" =  colour_methods[["fairadapt_2"]]
     ),
     guide = "none"
   ) +
@@ -2083,12 +2325,14 @@ data_plot <- res_sim_prop |>
   dplyr::select(
     n0, n1, seed, a, mu0, mu1, prop_0,
     zeta_1_med, zeta_1_ot, zeta_1_tmatch,
-    zeta_1_skh, zeta_1_sot_12, zeta_1_sot_21
+    zeta_1_skh, zeta_1_sot_12, zeta_1_sot_21,
+    zeta_1_fairadapt_12_lin, zeta_1_fairadapt_21_lin
   ) |> 
   pivot_longer(
     cols = c(
       zeta_1_med, zeta_1_ot, zeta_1_tmatch,
-      zeta_1_skh, zeta_1_sot_12, zeta_1_sot_21), 
+      zeta_1_skh, zeta_1_sot_12, zeta_1_sot_21,
+      zeta_1_fairadapt_12_lin, zeta_1_fairadapt_21_lin), 
     names_to = "type", values_to = "val"
   ) |> 
   mutate(
@@ -2096,9 +2340,10 @@ data_plot <- res_sim_prop |>
       type,
       levels = c(
         "zeta_1_med", "zeta_1_ot", "zeta_1_tmatch",
-        "zeta_1_skh", "zeta_1_sot_12", "zeta_1_sot_21"
+        "zeta_1_skh", "zeta_1_sot_12", "zeta_1_sot_21",
+        "zeta_1_fairadapt_12_lin", "zeta_1_fairadapt_21_lin"
       ),
-      labels = c("CM", "OT", "OT-M", "SKH", "ST(1)", "ST(2)")
+      labels = c("CM", "OT", "OT-M", "SKH", "ST(1)", "ST(2)", "FPT(1)", "FPT(2)")
     ),
     dist_to_theo_val = 3 - val
   )
@@ -2120,7 +2365,9 @@ p <- ggplot(
       "OT-M" = colour_methods[["OT-M"]], 
       "SKH" = colour_methods[["skh"]], 
       "ST(1)" =  colour_methods[["seq_1"]],
-      "ST(2)" =  colour_methods[["seq_2"]]
+      "ST(2)" =  colour_methods[["seq_2"]],
+      "FPT(1)" =  colour_methods[["fairadapt_1"]],
+      "FPT(2)" =  colour_methods[["fairadapt_2"]]
     ),
     guide = "none"
   ) +
@@ -2178,12 +2425,14 @@ data_plot_tau <- res_sim_prop |>
   dplyr::select(
     n0, n1, seed, a, mu0, mu1, prop_0,
     tot_effect_med, tot_effect_ot, tot_effect_tmatch,
-    tot_effect_skh, tot_effect_sot_12, tot_effect_sot_21
+    tot_effect_skh, tot_effect_sot_12, tot_effect_sot_21,
+    tot_effect_fairadapt_12_lin, tot_effect_fairadapt_21_lin
   ) |> 
   pivot_longer(
     cols = c(
       tot_effect_med, tot_effect_ot, tot_effect_tmatch,
-      tot_effect_skh, tot_effect_sot_12, tot_effect_sot_21
+      tot_effect_skh, tot_effect_sot_12, tot_effect_sot_21,
+      tot_effect_fairadapt_12_lin, tot_effect_fairadapt_21_lin
     ), 
     names_to = "type", values_to = "tau"
   ) |> 
@@ -2192,9 +2441,10 @@ data_plot_tau <- res_sim_prop |>
       type,
       levels = c(
         "tot_effect_med", "tot_effect_ot", "tot_effect_tmatch",
-        "tot_effect_skh", "tot_effect_sot_12", "tot_effect_sot_21"
+        "tot_effect_skh", "tot_effect_sot_12", "tot_effect_sot_21",
+        "tot_effect_fairadapt_12_lin", "tot_effect_fairadapt_21_lin"
       ),
-      labels = c("CM", "OT", "OT-M", "SKH", "ST(1)", "ST(2)")
+      labels = c("CM", "OT", "OT-M", "SKH", "ST(1)", "ST(2)", "FPT(1)", "FPT(2)")
     ),
     dist_to_causal_effect = (a1+a2) * (a*mu1 - a*mu0) + 3 - tau
   )
@@ -2203,12 +2453,14 @@ data_plot_delta0 <- res_sim_prop |>
   dplyr::select(
     n0, n1, seed, a, mu0, mu1, prop_0,
     delta_0_med, delta_0_ot, delta_0_tmatch,
-    delta_0_skh, delta_0_sot_12, delta_0_sot_21
+    delta_0_skh, delta_0_sot_12, delta_0_sot_21,
+    delta_0_fairadapt_12_lin, delta_0_fairadapt_21_lin
   ) |> 
   pivot_longer(
     cols = c(
       delta_0_med, delta_0_ot, delta_0_tmatch,
-      delta_0_skh, delta_0_sot_12, delta_0_sot_21
+      delta_0_skh, delta_0_sot_12, delta_0_sot_21,
+      delta_0_fairadapt_12_lin, delta_0_fairadapt_21_lin
     ), 
     names_to = "type", values_to = "val"
   ) |> 
@@ -2217,9 +2469,10 @@ data_plot_delta0 <- res_sim_prop |>
       type,
       levels = c(
         "delta_0_med", "delta_0_ot", "delta_0_tmatch",
-        "delta_0_skh", "delta_0_sot_12", "delta_0_sot_21"
+        "delta_0_skh", "delta_0_sot_12", "delta_0_sot_21",
+        "delta_0_fairadapt_12_lin", "delta_0_fairadapt_21_lin"
       ),
-      labels = c("CM", "OT", "OT-M", "SKH", "ST(1)", "ST(2)")
+      labels = c("CM", "OT", "OT-M", "SKH", "ST(1)", "ST(2)", "FPT(1)", "FPT(2)")
     ),
     dist_to_theo_val = ((a1+a2)*(mu1-mu0)) - val
   )
@@ -2228,12 +2481,14 @@ data_plot_zeta1 <- res_sim_prop |>
   dplyr::select(
     n0, n1, seed, a, mu0, mu1, prop_0,
     zeta_1_med, zeta_1_ot, zeta_1_tmatch,
-    zeta_1_skh, zeta_1_sot_12, zeta_1_sot_21
+    zeta_1_skh, zeta_1_sot_12, zeta_1_sot_21,
+    zeta_1_fairadapt_12_lin, zeta_1_fairadapt_21_lin
   ) |> 
   pivot_longer(
     cols = c(
       zeta_1_med, zeta_1_ot, zeta_1_tmatch,
-      zeta_1_skh, zeta_1_sot_12, zeta_1_sot_21), 
+      zeta_1_skh, zeta_1_sot_12, zeta_1_sot_21,
+      zeta_1_fairadapt_12_lin, zeta_1_fairadapt_21_lin), 
     names_to = "type", values_to = "val"
   ) |> 
   mutate(
@@ -2241,9 +2496,10 @@ data_plot_zeta1 <- res_sim_prop |>
       type,
       levels = c(
         "zeta_1_med", "zeta_1_ot", "zeta_1_tmatch",
-        "zeta_1_skh", "zeta_1_sot_12", "zeta_1_sot_21"
+        "zeta_1_skh", "zeta_1_sot_12", "zeta_1_sot_21",
+        "zeta_1_fairadapt_12_lin", "zeta_1_fairadapt_21_lin"
       ),
-      labels = c("CM", "OT", "OT-M", "SKH", "ST(1)", "ST(2)")
+      labels = c("CM", "OT", "OT-M", "SKH", "ST(1)", "ST(2)", "FPT(1)", "FPT(2)")
     ),
     dist_to_theo_val = 3 - val
   )
@@ -2301,7 +2557,9 @@ p <- ggplot(
       "OT-M" = colour_methods[["OT-M"]], 
       "SKH" = colour_methods[["skh"]], 
       "ST(1)" =  colour_methods[["seq_1"]],
-      "ST(2)" =  colour_methods[["seq_2"]]
+      "ST(2)" =  colour_methods[["seq_2"]],
+      "FPT(1)" =  colour_methods[["fairadapt_1"]],
+      "FPT(2)" =  colour_methods[["fairadapt_2"]]
     ),
     guide = "none",
   ) +

@@ -23,6 +23,7 @@ library(seqtransfairness)
 # remotes::install_github(repo = "fer-agathe/transport-simplex")
 library(transportsimplex)
 library(randomForest)
+library(fairadapt)
 library(grf)
 library(cluster)
 
@@ -105,6 +106,7 @@ tb <- compas |>
 ```{r show-summary-tb}
 dim(tb)
 summary(tb)
+#write.csv(tb, "compas.csv", row.names = FALSE)
 ```
 
 We assume the DAG shown in @fig-dag-compas.
@@ -119,7 +121,7 @@ variables <- c("race",
 adj <- matrix(
   # S  1  2  3  Y
   c(0, 1, 1, 1, 1,# S
-    0, 0, 1, 2, 1,# 1 (age)
+    0, 0, 1, 1, 1,# 1 (age)
     0, 0, 0, 0, 1,# 2 (priors_count)
     0, 0, 0, 0, 1,# 3 (c_charge_degree)
     0, 0, 0, 0, 0 # Y
@@ -386,6 +388,33 @@ stopCluster(cl)
 load("../output/seq-t-compas.rda")
 ```
 
+### Fairadapt
+
+```{r fairadapt-rf-linear}
+
+# RF
+fpt_model_rf <- fairadapt(
+    priors_count ~ ., 
+    train.data = tb,
+    prot.attr = A_name, adj.mat = adj,
+    quant.method = rangerQuants
+)
+
+adapt_df_rf <- adaptedData(fpt_model_rf)
+adapt_df_rf_untreated <- adapt_df_rf[ind_untreated,]
+
+# Linear model
+fpt_model_lin <- fairadapt(
+    priors_count ~ ., 
+    train.data = tb,
+    prot.attr = A_name, adj.mat = adj,
+    quant.method = linearQuants
+)
+
+adapt_df_lin <- adaptedData(fpt_model_lin)
+adapt_df_lin_untreated <- adapt_df_lin[ind_untreated,]
+```
+
 ## Measuring the Causal Effect
 
 ### With Causal Mediation Analysis
@@ -544,6 +573,40 @@ cbind(
 )
 ```
 
+### With fairadapt
+
+```{r define-causal_effects_fairadapt}
+#| warning: false
+#| message: false
+
+causal_effects_fairadapt_rf <- causal_effects_cf(
+  data_untreated = tb_untreated, 
+  data_treated = tb_treated,
+  data_cf_untreated = as_tibble(adapt_df_rf_untreated |> select(-c(!!A_name, !!Y_name))), 
+  Y_name = Y_name, 
+  A_name = A_name, 
+  A_untreated = A_untreated
+)
+
+causal_effects_fairadapt_lin <- causal_effects_cf(
+  data_untreated = tb_untreated, 
+  data_treated = tb_treated,
+  data_cf_untreated = as_tibble(adapt_df_lin_untreated |> select(-c(!!A_name, !!Y_name))), 
+  Y_name = Y_name, 
+  A_name = A_name, 
+  A_untreated = A_untreated
+)
+
+cbind(
+  delta_0_rf = causal_effects_fairadapt_rf$delta_0,
+  zeta_1_rf = causal_effects_fairadapt_rf$zeta_1, 
+  tot_effect_rf = causal_effects_fairadapt_rf$tot_effect,
+  delta_0_lin = causal_effects_fairadapt_lin$delta_0,
+  zeta_1_lin = causal_effects_fairadapt_lin$zeta_1, 
+  tot_effect_lin = causal_effects_fairadapt_lin$tot_effect
+)
+```
+
 
 Let us visualize the distribution on the individuals effects for each transport-based method, in @fig-compas-dist-indiv-effects (frequency on the y-axis).
 ```{r}
@@ -619,7 +682,8 @@ colour_methods <- c(
   "OT-M" = "#009E73",
   "skh" = "darkgray",
   "seq_1" = "#0072B2", 
-  "seq_2" = "#D55E00"
+  #"seq_2" = "#D55E00",
+  "fairadapt_rf" = "#9966FF"
 )
 
 
@@ -633,24 +697,26 @@ if (export_tikz == TRUE)
   tikz(paste0("figs/", file_name, ".tex"), width = width_tikz, height = height_tikz)
 
 layout(
-  matrix(1:9, byrow = TRUE, ncol = 3),
+  matrix(1:12, byrow = TRUE, ncol = 3),
   widths = c(1, rep(.9, 2)), heights = c(1, rep(.72, 2))
 )
 
-for (i in 1:3) {
+for (i in 1:4) {
   x <- case_when(
     i == 1 ~ causal_effects_ot,
     i == 2 ~ causal_effects_sink_ot,
-    i == 3 ~ causal_effects_st
+    i == 3 ~ causal_effects_st,
+    i == 4 ~ causal_effects_fairadapt_rf
   )
   method <- case_when(
     i == 1 ~ "OT-M",
     i == 2 ~ "SKH",
-    i == 3 ~ "ST"
+    i == 3 ~ "ST",
+    i == 4 ~ "FPT-RF",
   )
   
   for (var_name in c("delta_0_i", "zeta_1_i", "tot_effect")) {
-    mar_bottom <- ifelse(i == 3, 2.1, .6)
+    mar_bottom <- ifelse(i == 4, 2.1, .6)
     mar_left <- ifelse(var_name == "delta_0_i", 3.1, 2.1)
     mar_top <- ifelse(i == 1, 2.1, .1)
     mar_right <- .4
@@ -669,7 +735,7 @@ for (i in 1:3) {
       printed_method = printed_method, 
       x_lim = x_lim_list[[var_name]],
       print_main = i == 1,
-      print_x_axis = i == 3
+      print_x_axis = i == 4
     )
   }
 }
@@ -692,9 +758,11 @@ tibble::tribble(
   "CM", delta_0_med, zeta_1_med, tot_effect_med,
   "OT", causal_effects_ot$delta_0, causal_effects_ot$zeta_1, causal_effects_ot$tot_effect,
   "SKH", causal_effects_sink_ot$delta_0, causal_effects_sink_ot$zeta_1, causal_effects_sink_ot$tot_effect,
-  "ST", causal_effects_st$delta_0, causal_effects_st$zeta_1, causal_effects_st$tot_effect
+  "ST", causal_effects_st$delta_0, causal_effects_st$zeta_1, causal_effects_st$tot_effect,
+  "FPT-RF", causal_effects_fairadapt_rf$delta_0, causal_effects_fairadapt_rf$zeta_1, causal_effects_fairadapt_rf$tot_effect,
+  "FPT-LIN", causal_effects_fairadapt_lin$delta_0, causal_effects_fairadapt_lin$zeta_1, causal_effects_fairadapt_lin$tot_effect
 ) |> 
-  knitr::kable(digits = 2)
+  knitr::kable(digits = 4)
 ```
 
 ### Decomposition of the Indirect Effect

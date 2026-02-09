@@ -16,6 +16,7 @@ In this chapter, we generate a binary treatment $a\in\{0,1\}$ (assigned in a wel
 library(tidyverse)
 library(tikzDevice)
 library(mnormt)
+library(fairadapt)
 ```
 
 ```{r}
@@ -28,7 +29,8 @@ col_group <- c("#00A08A","#F2AD00", "#1b95e0")
 colour_methods <- c(
     "OT" = "#CC79A7", "OT-M" = "#009E73",
     "skh" = "darkgray",
-    "seq_1" = "#0072B2", "seq_2" = "#D55E00"
+    "seq_1" = "#0072B2", "seq_2" = "#D55E00",
+    "fairadapt" = "#9966FF"
   )
 colGpe1 <- col_group[2]
 colGpe0 <- col_group[1]
