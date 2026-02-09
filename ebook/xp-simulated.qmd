@@ -1200,14 +1200,15 @@ data_plot <- causal_effects |>
       str_detect(name, "_st$") ~ "seq_ot",
       str_detect(name, "_sink_ot$") ~ "sink_ot",
       str_detect(name, "_ot$") ~ "ot",
+      str_detect(name, "_fairadapt$") ~ "fairadapt",
       TRUE ~ NA_character_
     ),
     Method = factor(
       Method,
       levels = c(
-        "seq_ot", "sink_ot", "ot", "causal_med"
+        "seq_ot", "sink_ot", "ot", "fairadapt", "causal_med"
       ),
-      labels = c("ST", "SKH", "OT-M", "CM")
+      labels = c("ST", "SKH", "OT-M", "FPT", "CM")
     )
   )
 p <- ggplot(
@@ -1242,7 +1243,8 @@ p <- p +
       "CM" = "#56B4E9",
       "OT-M" = colour_methods[["OT-M"]], 
       "SKH" = colour_methods[["skh"]], 
-      "ST" =  colour_methods[["seq_1"]]
+      "ST" =  colour_methods[["seq_1"]],
+      "FPT" =  colour_methods[["fairadapt"]]
     ),
     guide = "none"
   ) +
