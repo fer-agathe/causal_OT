@@ -341,7 +341,7 @@ seq_trans <- function(data,
           f[i] <- weights_S0[i, ] %*% (x_S0 <= x_S0[i]) / tot_weights_S0[i]
         }
         list_ecdf_values[[x_name]] <- f
-        f[f==1] <- 1-(1e-8)
+        f[f>=1] <- 1-(1e-8)
         
         # Transported values
         transported <- rep(NA, length(x_S0))
@@ -380,7 +380,7 @@ seq_trans <- function(data,
             f[i] <- weights_S0[i, ] %*% (pred_probs_0 <= pred_probs_0[i]) / tot_weights_S0[i]
           }
           list_ecdf_values[[x_name]] <- f
-          f[f==1] <- 1-(1e-8)
+          f[f>=1] <- 1-(1e-8)
           
           # Transported values
           pred_probs_0_t <- rep(NA, length(pred_probs_0))
