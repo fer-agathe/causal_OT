@@ -678,16 +678,16 @@ plot_hist_effects <- function(x,
 
 
 colour_methods <- c(
+   "fairadapt_rf" = "#9966FF",
   # "OT" = "#CC79A7",
   "OT-M" = "#009E73",
   "skh" = "darkgray",
-  "seq_1" = "#0072B2", 
+  "seq_1" = "#0072B2"
   #"seq_2" = "#D55E00",
-  "fairadapt_rf" = "#9966FF"
 )
 
 
-export_tikz <- FALSE
+export_tikz <- TRUE
 
 scale <- 1.42
 file_name <- "compas-dist-indiv-effects"
@@ -703,16 +703,17 @@ layout(
 
 for (i in 1:4) {
   x <- case_when(
-    i == 1 ~ causal_effects_ot,
-    i == 2 ~ causal_effects_sink_ot,
-    i == 3 ~ causal_effects_st,
-    i == 4 ~ causal_effects_fairadapt_rf
+    i == 1 ~ causal_effects_fairadapt_rf,
+    i == 2 ~ causal_effects_ot,
+    i == 3 ~ causal_effects_sink_ot,
+    i == 4 ~ causal_effects_st
+    
   )
   method <- case_when(
-    i == 1 ~ "OT-M",
-    i == 2 ~ "SKH",
-    i == 3 ~ "ST",
-    i == 4 ~ "FPT-RF",
+    i == 1 ~ "FPT-RF",
+    i == 2 ~ "OT-M",
+    i == 3 ~ "SKH",
+    i == 4 ~ "ST",
   )
   
   for (var_name in c("delta_0_i", "zeta_1_i", "tot_effect")) {
