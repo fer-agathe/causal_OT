@@ -4,8 +4,8 @@ project:
 
 
 book:
-  title: "Causal Inference with Counterfactuals and Optimal Transport"
-  date: "07/31/2025"
+  title: "Sequential Transport for Causal Mediation Analysis"
+  date: "02/09/2026"
   chapters:
     - index.qmd
     - part: I. Introduction
