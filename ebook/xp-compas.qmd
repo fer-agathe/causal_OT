@@ -6,6 +6,7 @@
 ## Objectives
 
 In this page, we calculate the average total causal effect, the average natural direct effect and the causal mediation effect (or indirect effect) of COMPAS dataset assuming a known causal graph. We compare three methodologies to estimate those effects:
+
 - Using Optimal Transport (OT) to first derive counterfactuals at the individual level and then, averaging over all the individuals in the dataset,
 - Using Sequential Transport (ST) to first derive counterfactuals at the individual level and then, averaging over all the individuals in the dataset,
 - Using LSEM from causal mediation analysis that fits linear models to estimate the different average causal effects.
@@ -76,30 +77,28 @@ source("../scripts/functions.R")
 
 ## Data
 
-We load the COMPAS dataset that is available in the {mlr3fairness} package.
+We load the COMPAS dataset that is available in the {fairadapt} package.
 
 ```{r load-compas-data}
-data(compas, package = "mlr3fairness")
+data(compas, package = "fairadapt")
 ```
 
-The outcome variable is binary here: whether the defendant is rearrested at any time. The "treatment" $A$ will be the sensitive attribute, `race`. We will consider a binary version of the race: `Caucasian` (whites, $A=1$) and `African-American` (Blacks, $A=0$). The idea is to build counterfactuals for Black people to ask questions such as "had this Black individual been white, what whould the prediction of an algorithm modeling recidivism be?".
+The outcome variable is binary here: whether the defendant is rearrested at any time. The "treatment" $A$ will be the sensitive attribute, `race`. In the data compiled in {fairadapt}, race is defined as `White` (which we will consider as $A=1$) and `Non-White` (which we will consider as $A=0$). The idea is to build counterfactuals for non-white people to ask questions such as "had this non-white individual been white, what would the prediction of an algorithm modeling recidivism be?".
 
 To train the predictive model of recidivism, we will use the following covariates: the age, the prior criminal records of defendants, and the charge degree (felony or misdemeanor).
 
 ```{r define-tb}
 tb <- compas |> 
   as_tibble() |> 
-  filter(race %in% c("Caucasian", "African-American")) |>
   select(
     race, # sensitive
     age, 
     priors_count, # The prior criminal records of defendants. 
     c_charge_degree, # F: Felony M: Misdemeanor
-    is_recid # outcome
+    is_recid = two_year_recid # outcome
   ) |> 
   mutate(
-   race = ifelse(race == "African-American", 0, 1), # African-American as "untreated"
-   is_recid = ifelse(is_recid == 0, 0, 1)
+   race = ifelse(race == "Non-White", 0, 1), # non-white indiv. as "untreated"
   )
 ```
 
@@ -154,7 +153,7 @@ tb_untreated <- tb[ind_untreated, ]
 tb_treated <- tb[-ind_untreated, ]
 ```
 
-Let us follow the DAG from @fig-dag-compas and build the counterfactuals of Black individuals: we thus transport individuals from $A=0$ to $A=1$, using the predictions on the test set. 
+Let us follow the DAG from @fig-dag-compas and build the counterfactuals of non-white individuals: we thus transport individuals from $A=0$ to $A=1$, using the predictions on the test set. 
 
 ### Multivariate Optimal Transport
 
@@ -390,7 +389,7 @@ load("../output/seq-t-compas.rda")
 
 ### Fairadapt
 
-```{r fairadapt-rf-linear}
+```{r fairadapt-rf-linear, message=FALSE, warning=FALSE}
 
 # RF
 fpt_model_rf <- fairadapt(
@@ -415,11 +414,14 @@ adapt_df_lin <- adaptedData(fpt_model_lin)
 adapt_df_lin_untreated <- adapt_df_lin[ind_untreated,]
 ```
 
+
+
 ## Measuring the Causal Effect
 
 ### With Causal Mediation Analysis
 
 Let us use the `multimed()`{.R} function from {mediation} to estimate the direct effect:
+
 - race -> is_recid (ir),
 and the different indirect effects:
 - race -> age -> is_recid,
@@ -629,9 +631,9 @@ plot_hist_effects <- function(x,
                               print_x_axis = TRUE) {
   if (print_main == TRUE) {
     name_effect <- case_when(
-      str_detect(var_name, "^delta_0") ~ "$\\delta_i(0)$",
-      str_detect(var_name, "^zeta_1") ~ "$\\zeta_i(1)$",
-      str_detect(var_name, "^tot_effect") ~ "$\\tau_i(1)$",
+      str_detect(var_name, "^delta_0") ~ "$\\delta_i$",#"$\\delta_i(0)$",
+      str_detect(var_name, "^zeta_1") ~ "$\\zeta_i$",#"$\\zeta_i(1)$",
+      str_detect(var_name, "^tot_effect") ~ "$\\tau_i$",#"$\\tau_i(1)$",
       TRUE ~ "other"
     )
     if (tikz == FALSE) name_effect <- latex2exp::TeX(name_effect)
@@ -687,7 +689,7 @@ colour_methods <- c(
 )
 
 
-export_tikz <- TRUE
+export_tikz <- FALSE
 
 scale <- 1.42
 file_name <- "compas-dist-indiv-effects"
@@ -721,7 +723,11 @@ for (i in 1:4) {
     mar_left <- ifelse(var_name == "delta_0_i", 3.1, 2.1)
     mar_top <- ifelse(i == 1, 2.1, .1)
     mar_right <- .4
-    printed_method <- ifelse(var_name == "delta_0_i", method, "")
+    printed_method <- ifelse(
+      var_name == "delta_0_i", 
+      ifelse(method == "OT-M", "OT", method),
+      ""
+    )
     
     par(mar = c(mar_bottom, mar_left, mar_top, mar_right))
     x_lim_list <- list(
@@ -751,19 +757,118 @@ if (export_tikz == TRUE) {
 }
 ```
 
+### With Normalizing Flows
+
+We export the dataset to estimate the causal effect using normalizing flows with the python library medflow (see the [Github page of medflow](https://github.com/JesseZhou-1/medflow)). The python script is provided below but is not run during the compilation of this page. Note that this procedure does not provide individual effects, but aggregated ones.
+```{r exporting-data-for-nf}
+save(tb, file = "../output/compas.rda")
+write_csv(tb, file = "../output/compas.csv")
+```
+
+```{python, eval=FALSE}
+import numpy as np
+import os
+from medflow import train_med, sim_med
+import pandas as pd
+
+df2 = pd.read_csv("compas.csv")
+df2["c_charge_degree"] = (df2["c_charge_degree"] == "F").astype(int)
+
+df2.to_csv("compas_cleaned_v2.csv", index=False)
+
+base_path = './'  # Define the base path for file operations.
+folder = '.'  # Define the folder where files will be stored.
+path = os.path.join(base_path, folder, '')  # Combines the base path and folder into a complete path.
+dataset_name = 'compas_cleaned_v2'  # Define the name of the dataset.
+
+if not (os.path.isdir(path)):  # checks if a directory with the name 'path' exists.
+    os.makedirs(path)  # if not, creates a new directory with this name. This is where the logs and model weights will be saved.
+    
+## MODEL TRAINING (~25 min)
+train_med(path=path, 
+  dataset_name=dataset_name, 
+  treatment='race', 
+  confounder=[], 
+  mediator=["age", "priors_count","c_charge_degree"], 
+  outcome='is_recid', 
+  test_size=0.2, 
+  cat_var=["c_charge_degree"], 
+  sens_corr=None, 
+  seed_split=1,
+  model_name=path + 'seed_1', 
+  trn_batch_size=64, 
+  val_batch_size=512, 
+  learning_rate=1e-4, 
+  seed=1,
+  nb_epoch=3000, 
+  nb_estop=20, 
+  val_freq=1, 
+  emb_net=[164, 48, 32], 
+  int_net=[32, 24, 16]
+)
+
+## EFFECT ESTIMATION (~3 minutes)
+# Path-specific effects
+sim_med(
+  path=path, 
+  dataset_name=dataset_name, 
+  model_name=path + 'seed_1', 
+  n_mce_samples=10000, seed=1, 
+  inv_datafile_name='1_path_100k_v2',
+  cat_list=[0, 1], 
+  moderator=None
+)
+```
+
+In this page, we load the results:
+```{r load-NF-results}
+nf_estim <- read.csv("../output/1_path_100k_v2_results.csv")
+```
+
+
+We compute the direct, indirect and total effects
+```{r effects-nf}
+nf_tot_effect <- 
+  nf_estim |> filter(Potential.Outcome == "E[is_recid(race=1)]") |> pull("Value") -
+  nf_estim |> filter(Potential.Outcome == "E[is_recid(race=0)]") |> pull("Value")
+
+# Indirect
+nf_delta_0 <- 
+  nf_estim |> filter(
+    Potential.Outcome == "E[is_recid(race=0, age(race=1), priors_count(race=1), c_charge_degree(race=1))]"
+    ) |> pull("Value") -
+  nf_estim |> filter(
+    Potential.Outcome == "E[is_recid(race=0)]"
+  ) |> pull("Value")
+  
+# Direct
+nf_zeta_1 <- nf_tot_effect - nf_delta_0
+
+# Sanity check for direct effect
+nf_estim |> filter(
+  Potential.Outcome == "E[is_recid(race=1)]"
+) |> pull("Value")-
+nf_estim |> filter(
+  Potential.Outcome == "E[is_recid(race=0, age(race=1), priors_count(race=1), c_charge_degree(race=1))]"
+) |> pull("Value")
+```
+
+
+
 ### Summary
 
 ```{r summary-table}
 tibble::tribble(
   ~method, ~delta_0, ~zeta_1, ~tot_effect,
   "CM", delta_0_med, zeta_1_med, tot_effect_med,
+  "FPT-RF", causal_effects_fairadapt_rf$delta_0, causal_effects_fairadapt_rf$zeta_1, causal_effects_fairadapt_rf$tot_effect,
+  "FPT-LIN", causal_effects_fairadapt_lin$delta_0, causal_effects_fairadapt_lin$zeta_1, causal_effects_fairadapt_lin$tot_effect,
+  "NF", nf_delta_0, nf_zeta_1, nf_tot_effect,
   "OT", causal_effects_ot$delta_0, causal_effects_ot$zeta_1, causal_effects_ot$tot_effect,
   "SKH", causal_effects_sink_ot$delta_0, causal_effects_sink_ot$zeta_1, causal_effects_sink_ot$tot_effect,
-  "ST", causal_effects_st$delta_0, causal_effects_st$zeta_1, causal_effects_st$tot_effect,
-  "FPT-RF", causal_effects_fairadapt_rf$delta_0, causal_effects_fairadapt_rf$zeta_1, causal_effects_fairadapt_rf$tot_effect,
-  "FPT-LIN", causal_effects_fairadapt_lin$delta_0, causal_effects_fairadapt_lin$zeta_1, causal_effects_fairadapt_lin$tot_effect
+  "ST", causal_effects_st$delta_0, causal_effects_st$zeta_1, causal_effects_st$tot_effect
 ) |> 
-  knitr::kable(digits = 4)
+  knitr::kable(digits = 3)
 ```
 
 ### Decomposition of the Indirect Effect
@@ -831,7 +936,7 @@ The total indirect effect is:
 modified_causal_effects_cf(data_untreated, data_cf_untreated, mu_untreated_model)$delta_0
 ```
 
-#### Causal Influence of Age
+#### Influence of Age
 
 ```{r define-causal_effects_st_first}
 #| warning: false
@@ -851,7 +956,7 @@ cbind(
 )
 ```
 
-#### Causal Influence of Prior Counts
+#### Influence of Prior Counts
 
 ```{r define-causal_effects_st_second}
 #| warning: false
@@ -871,7 +976,7 @@ cbind(
 )
 ```
 
-#### Causal Influence of Charge Degree
+#### Influence of Charge Degree
 
 ```{r define-causal_effects_st_third}
 #| warning: false
