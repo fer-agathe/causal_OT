@@ -472,7 +472,7 @@ draw_ellipse(Mu0, Sigma0_transport, col = colGpet, lty = 2)
 ### Transport-based Many-to-1 Matching {#sec-cf-tmatch}
 
 
-Le us se optimal transport to perform transport-based optimal many-to-1 matching. We use optimal transport with a uniform source and target distribution. For each unit from the source group (group~0), we select the matched unit from the target group (group~1) as the one wit the maximum transported mass. This way, each unit in the source is matched to exactly one in the target.
+Let us use optimal transport to perform transport-based optimal many-to-1 matching. We use optimal transport with a uniform source and target distribution. For each unit from the source group (group~0), we select the matched unit from the target group (group~1) as the one wit the maximum transported mass. This way, each unit in the source is matched to exactly one in the target.
 
 ```{r define-transport_many_to_one}
 #| code-fold: true
@@ -976,7 +976,7 @@ for (gamma in gammas) {
 We will now transport individuals using sequential transport. The results are sensitive to the ordering within the sequence. We will consider both ordering to illustrate this.
 
 - a first marginal univariate optimal transport along the first dimension ($X_1$), then a conditional transport for the second dimension ($X_2 \mid X_1)$: `sequential_transport_12()`{.R},
-- a first marginal univariate optimal transport along the second dimension ($X_2$), then a conditional transport for the first dimension ($X_1 \mid X_2)$: `sequential_transport_21()`{.R},
+- a first marginal univariate optimal transport along the second dimension ($X_2$), then a conditional transport for the first dimension ($X_1 \mid X_2)$: `sequential_transport_21()`{.R}.
 
 
 ```{r define-sequential_transport_12}
@@ -1081,7 +1081,7 @@ X1_st_12 <- sequential_transport_12(
 ```
 
 
-We also transport from `r colorize("group 0", colGpe0)` to group `r colorize("group 1", colGpe1)` with sequential transport, first transporting $X_1$ then $X_1 | X_2$.
+We also transport from `r colorize("group 0", colGpe0)` to group `r colorize("group 1", colGpe1)` with sequential transport, first transporting $X_1$ then $X_2 | X_1$.
 
 ```{r define-X0_st_21}
 X0_st_21 <- sequential_transport_21(
@@ -1847,7 +1847,7 @@ Let us have a look at the distribution of the individual causal effects (@fig-ga
 ```{r}
 #| message: false
 #| warning: false
-#| fig-cap: Distribution of individual direct effect ($\delta_i(0)$), indirect effect ($\zeta_i(0)$), and total causal effect ($\tau_i$) estimated with transport-based counterfactuals with optimal transport (OT-M), penalized transport (SKH), and sequential transport (ST).
+#| fig-cap: Distribution of individual direct effect ($\delta_i(0)$), indirect effect ($\zeta_i(0)$), and total causal effect ($\tau_i$) estimated with transport-based counterfactuals with optimal transport (OT), penalized transport (SKH), and sequential transport (ST).
 #| label: fig-gaussian-dist-indiv-effects
 #| code-fold: true
 #| code-summary: Codes to create the Figure.
@@ -1889,12 +1889,12 @@ plot_hist_effects <- function(x,
   
   # main title = method (only first row)
   if (print_method_main && method_main != "") {
-    title(main = method_main, cex.main = 1, family = font_family)
+    title(main = method_main, cex.main = 1, family = font_family, font.main = 1)
   }
   
   # y-axis label = effect name (only first column)
   if (effect_ylab != "") {
-    title(ylab = effect_ylab, line = 2, cex.lab = 1, family = font_family)
+    title(ylab = effect_ylab, line = 2, cex.lab = 1, family = font_family, font.main = 1)
   }
   
   abline(v = mean(data_plot), col = "darkred", lty = 2, lwd = 2)
@@ -1903,7 +1903,7 @@ plot_hist_effects <- function(x,
 }
 
 export_tikz <- FALSE
-scale <- 1.2
+scale <- 1.475
 file_name <- "gaussian-indiv-effects"
 width_tikz <- 2.7*scale
 height_tikz <- 1.5*scale
@@ -1922,30 +1922,30 @@ x_lim_list <- list(
   "tot_effect" = c(-4, 14)
 )
 
-for (i in 1:5) {
+for (i in 1:4) {
   
   x <- dplyr::case_when(
     i == 1 ~ causal_effects_ot,
-    i == 2 ~ causal_effects_tmatch,
-    i == 3 ~ causal_effect_skh[["0.1"]],
-    i == 4 ~ causal_effect_sot_12,
-    i == 5 ~ causal_effect_sot_21
+    # i == 2 ~ causal_effects_tmatch,
+    i == 2 ~ causal_effect_skh[["0.1"]],
+    i == 3 ~ causal_effect_sot_12,
+    i == 4 ~ causal_effect_sot_21
   )
   
   method <- dplyr::case_when(
     i == 1 ~ "OT",
-    i == 2 ~ "OT-M",
-    i == 3 ~ "SKH",
-    i == 4 ~ "ST(1)",
-    i == 5 ~ "ST(2)"
+    # i == 2 ~ "OT-M",
+    i == 2 ~ "SKH",
+    i == 3 ~ "ST(1)",
+    i == 4 ~ "ST(2)"
   )
   
   colour <- dplyr::case_when(
     i == 1 ~ colour_methods[["OT"]],
-    i == 2 ~ colour_methods[["OT-M"]],
-    i == 3 ~ colour_methods[["skh"]],
-    i == 4 ~ colour_methods[["seq_1"]],
-    i == 5 ~ colour_methods[["seq_2"]]
+    # i == 2 ~ colour_methods[["OT-M"]],
+    i == 2 ~ colour_methods[["skh"]],
+    i == 3 ~ colour_methods[["seq_1"]],
+    i == 4 ~ colour_methods[["seq_2"]]
   )
   
   for (var_name in c("delta_0_i", "zeta_1_i", "tot_effect")) {
@@ -1961,9 +1961,9 @@ for (i in 1:5) {
     # effect label only in first column
     if (i == 1) {
       effect_label <- dplyr::case_when(
-        stringr::str_detect(var_name, "^delta_0") ~ "$\\delta_i(0)$",
-        stringr::str_detect(var_name, "^zeta_1") ~ "$\\zeta_i(1)$",
-        stringr::str_detect(var_name, "^tot_effect") ~ "$\\tau_i(1)$",
+        stringr::str_detect(var_name, "^delta_0") ~ "$\\delta_i$",
+        stringr::str_detect(var_name, "^zeta_1") ~ "$\\zeta_i$",
+        stringr::str_detect(var_name, "^tot_effect") ~ "$\\tau_i$",
         TRUE ~ "other"
       )
       if (export_tikz == FALSE) effect_label <- latex2exp::TeX(effect_label)
@@ -2011,7 +2011,7 @@ Let us have a look at some individuals. We focus on the one with the predicted $
 (tau_sot_21 <- causal_effect_sot_21$tot_effect)
 ```
 
-We create a table that contains the coordinates of individuals from `r colorize("group 0", colGpe0)`), their transported coordinates (using OT, and sequential transport), and their estimated values for $\delta_i(0)$, $\zeta_i(1)$, and $\tau_i$, obtained with the differenc counterfactuals.
+We create a table that contains the coordinates of individuals from `r colorize("group 0", colGpe0)`), their transported coordinates (using OT, and sequential transport), and their estimated values for $\delta_i(0)$, $\zeta_i(1)$, and $\tau_i$, obtained with the different counterfactuals.
 
 ```{r define-tb_indiv_0}
 tb_indiv_0 <- 

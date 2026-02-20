@@ -9,7 +9,7 @@ In this chapter, we use the same data-generating process described in [Chapter -
 
 1. We change the distance between the means of the Gaussian distributions in groups 0 and 1. As this distance increases, the overlap between the two groups decreases.
 
-2. We let the proportion of individuals in group 0 relative to group 1 vary. This simulated different levels of class imbalance.
+2. We let the proportion of individuals in group 0 relative to group 1 vary. This simulates different levels of class imbalance.
 
 
 :::
@@ -1233,7 +1233,8 @@ p
 export_pdf <- FALSE
 
 x_lab <- "$\\alpha$ (distance $=2\\alpha\\sqrt{2}$)"
-y_lab <- "Distance to $\\bar\\delta(0)$"
+# y_lab <- "Distance to $\\bar\\delta(0)$"
+y_lab <- "Distance to $\\bar\\delta$"
 
 if (export_pdf == FALSE) {
   x_lab <- latex2exp::TeX(x_lab)
@@ -1460,7 +1461,8 @@ p
 export_pdf <- FALSE
 
 x_lab <- "$\\alpha$ (distance $=2\\alpha\\sqrt{2}$)"
-y_lab <- "Distance to $\\bar\\zeta(1)$"
+# y_lab <- "Distance to $\\bar\\zeta(1)$"
+y_lab <- "Distance to $\\bar\\zeta$"
 
 if (export_pdf == FALSE) {
   x_lab <- latex2exp::TeX(x_lab)
@@ -1552,17 +1554,18 @@ A more condensed figure, which focuses on $\bar{\delta}(0)$,  $\bar{\zeta}(1)$, 
 #| code-summary: Codes to create the Figure.
 a1 <- 2
 a2 <- -1.5
-export_pdf <- TRUE
+
 
 x_lab <- "$\\alpha$ (distance $=2\\alpha\\sqrt{2}$)"
 y_lab <- "Estimation error"
 metrics_lab <- c("$\\bar{\\delta}(0)$", "$\\bar{\\zeta}(1)$", "$\\bar{\\tau}$")
+metrics_lab <- c("$\\bar{\\delta}$", "$\\bar{\\zeta}$", "$\\bar{\\tau}$")
 
-if (export_pdf == FALSE) {
-  x_lab <- latex2exp::TeX(x_lab)
-  y_lab <- latex2exp::TeX(y_lab)
-  metrics_lab <- latex2exp::TeX(metrics_lab)
-}
+
+x_lab <- latex2exp::TeX(x_lab)
+y_lab <- latex2exp::TeX(y_lab)
+metrics_lab <- latex2exp::TeX(metrics_lab)
+
 
 data_plot_tau <- res_sim |> 
   dplyr::select(
@@ -1674,6 +1677,97 @@ data_plot <- data_plot_tau |>
     by = c("n0", "n1", "seed", "a", "mu0", "mu1", "type")
   ) |> 
 filter(a %in% seq(0, 2, by = .2))
+
+p <- ggplot(
+  data = data_plot |> select(-tau, -delta0, -zeta1) |> 
+    pivot_longer(
+      cols = c(dist_tau, dist_delta0, dist_zeta1), 
+      names_to = "metric", 
+      values_to = "dist"
+    ) |> 
+    mutate(
+      metric = factor(
+        metric,
+        levels = c("dist_delta0", "dist_zeta1", "dist_tau"),
+        labels = metrics_lab
+      )
+    ),
+  mapping = aes(x = factor(a), y = dist)
+) +
+  geom_violin(
+    mapping = aes(fill = type)
+  ) +
+  geom_hline(yintercept = 0, colour = "darkred", linetype = "dashed") +
+  theme_paper() +
+  facet_grid(metric ~ type, scales = "free_x") +
+  scale_fill_manual(
+    NULL,
+    values = c(
+      "CM" = "#56B4E9",
+      "FPT(1)" =  colour_methods[["fairadapt_1"]],
+      "FPT(2)" =  colour_methods[["fairadapt_2"]],
+      "OT" = colour_methods[["OT"]], 
+      "OT-M" = colour_methods[["OT-M"]], 
+      "SKH" = colour_methods[["skh"]], 
+      "ST(1)" =  colour_methods[["seq_1"]],
+      "ST(2)" =  colour_methods[["seq_2"]]
+    ),
+    guide = "none",
+  ) +
+  theme(legend.position = "bottom") +
+  labs(
+    x = x_lab,
+    y = y_lab,
+  ) +
+  scale_x_discrete(
+    labels = ifelse(unique(data_plot$a) %% .5 == 0, unique(data_plot$a), "")
+  )
+
+p
+```
+
+A shorter version for the paper.
+```{r}
+#| fig-width: 8
+#| fig-height: 8
+#| code-fold: true
+#| code-summary: Codes to create the Figure.
+a1 <- 2
+a2 <- -1.5
+export_pdf <- TRUE #FALSE
+
+x_lab <- "$\\alpha$ (distance $=2\\alpha\\sqrt{2}$)"
+y_lab <- "Estimation error"
+metrics_lab <- c("$\\bar{\\delta}(0)$", "$\\bar{\\zeta}(1)$", "$\\bar{\\tau}$")
+metrics_lab <- c("$\\bar{\\delta}$", "$\\bar{\\zeta}$", "$\\bar{\\tau}$")
+
+if (export_pdf == FALSE) {
+  x_lab <- latex2exp::TeX(x_lab)
+  y_lab <- latex2exp::TeX(y_lab)
+  metrics_lab <- latex2exp::TeX(metrics_lab)
+}
+
+data_plot <- data_plot_tau |> 
+  rename(dist_tau = dist_to_causal_effect) |> 
+  left_join(
+    data_plot_delta0 |> 
+      rename(
+        delta0 = val,
+        dist_delta0 = dist_to_theo_val
+      ),
+    by = c("n0", "n1", "seed", "a", "mu0", "mu1", "type")
+  ) |> 
+  left_join(
+    data_plot_zeta1 |> 
+      rename(
+        zeta1 = val,
+        dist_zeta1 = dist_to_theo_val
+      ),
+    by = c("n0", "n1", "seed", "a", "mu0", "mu1", "type")
+  ) |> 
+  filter(a %in% seq(0, 2, by = .2)) |> 
+  filter(type %in% c("ST(1)", "ST(2)", "OT", "SKH", "OT"))
+  
 
 p <- ggplot(
   data = data_plot |> select(-tau, -delta0, -zeta1) |> 
@@ -1988,7 +2082,7 @@ load("../output/res_sim_prop-gaussian-mc.rda")
 #| code-summary: Codes to create the Figure.
 a1 <- 2
 a2 <- -1.5
-export_pdf <- FALSE
+export_pdf <- TRUE #FALSE
 
 x_lab <- "Proportion of untreated"
 y_lab <- "Distance to $\\bar\\tau$"
@@ -2088,7 +2182,8 @@ a2 <- -1.5
 export_pdf <- FALSE
 
 x_lab <- "Proportion of untreated"
-y_lab <- "Distance to $\\bar\\delta(0)$"
+# y_lab <- "Distance to $\\bar\\delta(0)$"
+y_lab <- "Distance to $\\bar\\delta$"
 
 if (export_pdf == FALSE) {
   x_lab <- latex2exp::TeX(x_lab)
@@ -2322,7 +2417,8 @@ a2 <- -1.5
 export_pdf <- FALSE 
 
 x_lab <- "Proportion of untreated"
-y_lab <- "Distance to $\\bar\\zeta(1)$"
+# y_lab <- "Distance to $\\bar\\zeta(1)$"
+y_lab <- "Distance to $\\bar\\zeta$"
 
 if (export_pdf == FALSE) {
   x_lab <- latex2exp::TeX(x_lab)
@@ -2417,17 +2513,17 @@ A more condensed figure, which focuses on $\bar{\delta}(0)$,  $\bar{\zeta}(1)$, 
 #| code-summary: Codes to create the Figure.
 a1 <- 2
 a2 <- -1.5
-export_pdf <- TRUE
 
 x_lab <- "Proportion of untreated ($\\%$)"
 y_lab <- "Estimation error"
-metrics_lab <- c("$\\bar{\\delta}(0)$", "$\\bar{\\zeta}(1)$", "$\\bar{\\tau}$")
+# metrics_lab <- c("$\\bar{\\delta}(0)$", "$\\bar{\\zeta}(1)$", "$\\bar{\\tau}$")
+metrics_lab <- c("$\\bar{\\delta}$", "$\\bar{\\zeta}$", "$\\bar{\\tau}$")
 
-if (export_pdf == FALSE) {
-  x_lab <- latex2exp::TeX(x_lab)
-  y_lab <- latex2exp::TeX(y_lab)
-  metrics_lab <- latex2exp::TeX(metrics_lab)
-}
+
+x_lab <- latex2exp::TeX(x_lab)
+y_lab <- latex2exp::TeX(y_lab)
+metrics_lab <- latex2exp::TeX(metrics_lab)
+
 
 data_plot_tau <- res_sim_prop |> 
   dplyr::select(
@@ -2543,6 +2639,98 @@ data_plot <- data_plot_tau |>
 data_plot <- data_plot |> filter(prop_0 %in% seq(.05, .95, by =.1))
 
 
+p <- ggplot(
+  data = data_plot |> select(-tau, -delta0, -zeta1) |> 
+    pivot_longer(
+      cols = c(dist_tau, dist_delta0, dist_zeta1), 
+      names_to = "metric", 
+      values_to = "dist"
+    ) |> 
+    mutate(
+      metric = factor(
+        metric,
+        levels = c("dist_delta0", "dist_zeta1", "dist_tau"),
+        labels = metrics_lab
+      )
+    ),
+  mapping = aes(x = factor(prop_0), y = dist)
+) +
+  geom_violin(
+    mapping = aes(fill = type)
+  ) +
+  geom_hline(yintercept = 0, colour = "darkred", linetype = "dashed") +
+  theme_paper() +
+  facet_grid(metric ~ type, scales = "free_x") +
+  scale_fill_manual(
+    NULL,
+    values = c(
+      "CM" = "#56B4E9",
+      "FPT(1)" =  colour_methods[["fairadapt_1"]],
+      "FPT(2)" =  colour_methods[["fairadapt_2"]],
+      "OT" = colour_methods[["OT"]], 
+      "OT-M" = colour_methods[["OT-M"]], 
+      "SKH" = colour_methods[["skh"]], 
+      "ST(1)" =  colour_methods[["seq_1"]],
+      "ST(2)" =  colour_methods[["seq_2"]]
+    ),
+    guide = "none",
+  ) +
+  theme(legend.position = "bottom") +
+  labs(
+    x = x_lab,
+    y = y_lab,
+  ) +
+  scale_x_discrete(
+    labels = 100*unique(data_plot$prop_0)
+  )
+
+p
+```
+
+
+A shorter version of the graph for the paper.
+```{r}
+#| fig-width: 8
+#| fig-height: 8
+#| code-fold: true
+#| code-summary: Codes to create the Figure.
+a1 <- 2
+a2 <- -1.5
+export_pdf <- FALSE
+
+x_lab <- "Proportion of untreated ($\\%$)"
+y_lab <- "Estimation error"
+metrics_lab <- c("$\\bar{\\delta}$", "$\\bar{\\zeta}$", "$\\bar{\\tau}$")
+
+if (export_pdf == FALSE) {
+  x_lab <- latex2exp::TeX(x_lab)
+  y_lab <- latex2exp::TeX(y_lab)
+  metrics_lab <- latex2exp::TeX(metrics_lab)
+}
+
+data_plot <- data_plot_tau |> 
+  rename(dist_tau = dist_to_causal_effect) |> 
+  left_join(
+    data_plot_delta0 |> 
+      rename(
+        delta0 = val,
+        dist_delta0 = dist_to_theo_val
+      ),
+    by = c("n0", "n1", "seed", "a", "mu0", "mu1", "type", "prop_0")
+  ) |> 
+  left_join(
+    data_plot_zeta1 |> 
+      rename(
+        zeta1 = val,
+        dist_zeta1 = dist_to_theo_val
+      ),
+    by = c("n0", "n1", "seed", "a", "mu0", "mu1", "type", "prop_0")
+  )
+
+data_plot <- data_plot |> filter(prop_0 %in% seq(.05, .95, by =.1)) |> 
+  filter(type %in% c("ST(1)", "ST(2)", "OT", "SKH", "OT"))
+
+
 
 p <- ggplot(
   data = data_plot |> select(-tau, -delta0, -zeta1) |> 
@@ -2594,7 +2782,7 @@ if (export_pdf == TRUE) {
   filename <- "gaussian-mc-prop"
   ggplot2_to_pdf(
     plot = p + theme(panel.spacing = unit(0.4, "lines")) +
-      theme(axis.text.x = element_text(size = rel(0.8))),
+      theme(axis.text.x = element_text(size = rel(1))),
     filename = filename, path = "figs/", 
     height = scale*3.6, width = scale*6,
     crop = TRUE
@@ -2602,4 +2790,6 @@ if (export_pdf == TRUE) {
   
   system(paste0("pdfcrop figs/", filename, ".pdf figs/", filename, ".pdf"))
 }
+p
 ```
+
