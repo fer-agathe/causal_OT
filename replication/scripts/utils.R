@@ -1,10 +1,6 @@
 colours <- c(
-  # `0` = "#5BBCD6", 
-  # `1` = "#FF0000", 
-  # `0` = "#1b95e0",
-  # `1` = "#7F170E",
   `0` = "#00A08A", 
-  `1` = "#F2AD00", 
+  `1` = "#D55E00", 
   `transp` = "#1b95e0",
   with = "#046C9A", 
   without = "#C93312"
@@ -16,7 +12,7 @@ scl <- scales::alpha(colfunc(9),.9)
 
 
 font_size <- 20
-font_family <- "CMU Serif"
+font_family <- "serif"
 
 #' Theme for ggplot2
 #'
@@ -98,14 +94,11 @@ plot_to_pdf <- function(filename,
     "\\documentclass{standalone}
       \\usepackage{amsmath,amssymb,amsthm,mathtools,graphicx}
       \\usepackage{array,dcolumn}
+      \\usepackage{tikz}
+      \\usetikzlibrary{arrows.meta, positioning, calc}
       %\\usepackage{dsfont}
       %\\usepackage{fontspec}
-      \\renewcommand{\\rmdefault}{ptm}
-      \\renewcommand{\\sfdefault}{phv}
-      %\\setmainfont{Noto Sans}
-      %
-      \\usepackage{nicefrac}
-      \\usepackage{times}
+      \\renewcommand{\\familydefault}{\\rmdefault}
       %\\usepackage{natbib}
       \\usepackage{microtype}
       %\\usepackage{newtxtext,newtxmath}
@@ -113,7 +106,6 @@ plot_to_pdf <- function(filename,
       \\usepackage{pgfplots}
       \\usetikzlibrary{pgfplots.groupplots}
       \\usepackage{xcolor}
-      \\usepackage{mathptmx}
       \\begin{document}
 
       \\input{",
@@ -195,12 +187,11 @@ ggplot2_to_pdf <- function(plot,
       \\usepackage{array,dcolumn}
       %\\usepackage{dsfont}
       %\\usepackage{fontspec}
-      \\renewcommand{\\rmdefault}{ptm}
-      \\renewcommand{\\sfdefault}{phv}
       %\\setmainfont{Noto Sans}
       %
+      \\usepackage{tikz}
+      \\usetikzlibrary{arrows.meta, positioning, calc}
       \\usepackage{nicefrac}
-      \\usepackage{times}
       %\\usepackage{natbib}
       \\usepackage{microtype}
       %\\usepackage{newtxtext,newtxmath}
@@ -208,7 +199,7 @@ ggplot2_to_pdf <- function(plot,
       \\usepackage{pgfplots}
       \\usetikzlibrary{pgfplots.groupplots}
       \\usepackage{xcolor}
-      \\usepackage{mathptmx}
+      \\renewcommand{\\familydefault}{\\rmdefault}
       \\begin{document}
 
       \\input{",
@@ -263,3 +254,4 @@ ggplot2_to_pdf <- function(plot,
   }
   if (scale_exists) system(paste0("rm ", path, "/", name_scale))
 }
+
