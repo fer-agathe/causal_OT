@@ -946,6 +946,9 @@ if (run_simul == TRUE) {
 ## 3.2 Results----
 causal_effects <- list_rbind(res_simul_effects)
 
+
+### Figure (Figure 2)----
+
 # If set to TRUE, a tikz picture will be generated and later included in 
 # a standalone LaTeX document that will be compiled with pdflatex
 export_pdf <- FALSE
