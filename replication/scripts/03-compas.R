@@ -462,7 +462,24 @@ cbind(
 
 ## 4.6 With Normalizing Flows----
 
+# First export the dataset
+write_csv(tb, file = "../output/compas.csv")
+
+# Then create a python environment and install required python libraries
 # This is done in python (see script `NF_compas.py`)
+system("python3 -m venv venv")
+system("venv/bin/python -m pip install --upgrade pip")
+system(paste0(
+  "venv/bin/python -m pip install ",
+  "--extra-index-url https://test.pypi.org/simple/ medflow"
+))
+system("venv/bin/python -m pip install numpy")
+
+# Execute the script (this takes about 30 min on a standard computer, in 2026)
+# If this code is executed in a terminal instead of called from R with system()
+# a progress is shown.
+system("venv/bin/python 03_NF_compas.py")
+
 # We load the obtained results:
 nf_estim <- read.csv("../output/1_path_100k_v2_results.csv")
 
@@ -735,3 +752,4 @@ indirect_c_charge_degree <- modified_causal_effects_cf(
 cbind(
   delta_0_c_charge_degree = indirect_c_charge_degree$delta_0
 )
+

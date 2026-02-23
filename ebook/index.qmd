@@ -10,6 +10,16 @@ This ebook contains the codes and explanations of codes used to produce the resu
 > We propose a distributional framework for causal mediation analysis based on optimal transport (OT) and its sequential extension along a mediator DAG. Instead of relying on cross-world structural counterfactuals, we construct mediator counterfactuals in a {\em mutatis mutandis} sense: mediators are modified only as needed to align an individual with the distribution under the alternative treatment, while respecting causal dependencies among mediators. Sequential transport (ST) builds these counterfactuals by applying univariate or conditional OT maps in a topological order of the mediator DAG, and extends naturally to categorical mediators through simplex representation, and adapted transport techniques.
 > We establish consistency of the estimated transport maps and of the induced individual-level decompositions of treatment effects. Gaussian examples show that ST recovers classical mediation formulas, while simulations confirm good performance in nonlinear and mixed-type settings. An application to the COMPAS dataset illustrates how ST yields deterministic, DAG-consistent counterfactual mediators and provides a fine-grained attribution of group disparities across mediators. The framework offers a flexible and interpretable alternative to structural causal models, and suggests extensions to longitudinal mediators, dynamic interventions, and stochastic transport flows.
 
+## Replication Package
+
+To replicate the empirical results of the paper (using R and pyton):
+
+<a href="./replication.zip" class="btn btn-primary btn-sm" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">Download the Replication Codes (Zip archive)</a>
+
+(See the readme file in the archive for more details.)
+
+## Outline of this Ebook
+
 The document is made of 5 parts:
 
 1. **Introduction**  

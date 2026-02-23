@@ -3,15 +3,15 @@ import os
 from medflow import train_med, sim_med
 import pandas as pd
 
-df2 = pd.read_csv("compas_v2.csv")
+df2 = pd.read_csv("../output/compas.csv")
 df2["c_charge_degree"] = (df2["c_charge_degree"] == "F").astype(int)
 
-df2.to_csv("compas_cleaned_v2.csv", index=False)
+df2.to_csv("../output/compas_cleaned.csv", index=False)
 
 base_path = './'  # Define the base path for file operations.
 folder = '../output/'  # Define the folder where files will be stored.
 path = os.path.join(base_path, folder, '')  # Combines the base path and folder into a complete path.
-dataset_name = 'compas_cleaned_v2'  # Define the name of the dataset.
+dataset_name = 'compas_cleaned'  # Define the name of the dataset.
 
 if not (os.path.isdir(path)):  # checks if a directory with the name 'path' exists.
     os.makedirs(path)  # if not, creates a new directory with this name. This is where the logs and model weights will be saved.
