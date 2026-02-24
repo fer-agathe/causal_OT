@@ -41,7 +41,7 @@ __pycache__/
 # HTML/Markdown output
 *.utf8.md
 *.knit.md
-*.html
+#*.html
 *.pdf
 
 # Notebooks
