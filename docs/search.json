@@ -508,7 +508,7 @@
     "href": "index.html#replication-package",
     "title": "Sequential Transport for Causal Mediation Analysis",
     "section": "1.1 Replication Package",
-    "text": "1.1 Replication Package\nTo replicate the empirical results of the paper (using R and pyton):\nDownload the Replication Codes (Zip archive)\n(See the readme file in the archive for more details.)",
+    "text": "1.1 Replication Package\nTo replicate the empirical results of the paper (using R and pyton):\nDownload the Replication Codes (Zip archive)\n(See the readme file in the archive for more details.)\nThe results presented in the paper focus on the following chapters of this ebook:\n\nChapter 5\nChapter 6\nChapter 13\nChapter 14\n\nThe other chapters provide additional context and details.",
     "crumbs": [
       "<span class='chapter-number'>1</span>  <span class='chapter-title'>Preface</span>"
     ]

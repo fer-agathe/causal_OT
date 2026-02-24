@@ -6,7 +6,7 @@
 
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
-<meta name="dcterms.date" content="2026-02-09">
+<meta name="dcterms.date" content="2026-02-24">
 
 <title>Sequential Transport for Causal Mediation Analysis</title>
 <style>
@@ -348,7 +348,7 @@ MathJax = {
     <div>
     <div class="quarto-title-meta-heading">Published</div>
     <div class="quarto-title-meta-contents">
-      <p class="date">February 9, 2026</p>
+      <p class="date">February 24, 2026</p>
     </div>
   </div>
   
@@ -367,13 +367,21 @@ MathJax = {
 <p>This ebook contains the codes and explanations of codes used to produce the results of our paper titled <em>Sequential Transport for Causal Mediation Analysis</em>.</p>
 <p><strong>Abstract</strong></p>
 <blockquote class="blockquote">
-<p>We propose a distributional framework for causal mediation analysis based on optimal transport (OT) and its sequential extension along a mediator DAG. Instead of relying on cross-world structural counterfactuals, we construct mediator counterfactuals in a {} sense: mediators are modified only as needed to align an individual with the distribution under the alternative treatment, while respecting causal dependencies among mediators. Sequential transport (ST) builds these counterfactuals by applying univariate or conditional OT maps in a topological order of the mediator DAG, and extends naturally to categorical mediators through simplex representation, and adapted transport techniques. We establish consistency of the estimated transport maps and of the induced individual-level decompositions of treatment effects. Gaussian examples show that ST recovers classical mediation formulas, while simulations confirm good performance in nonlinear and mixed-type settings. An application to the COMPAS dataset illustrates how ST yields deterministic, DAG-consistent counterfactual mediators and provides a fine-grained attribution of group disparities across mediators. The framework offers a flexible and interpretable alternative to structural causal models, and suggests extensions to longitudinal mediators, dynamic interventions, and stochastic transport flows.</p>
+<p>We propose a distributional framework for causal mediation analysis based on optimal transport (OT) and its sequential extension along a mediator DAG. Instead of relying on cross-world structural counterfactuals, we construct mediator counterfactuals in a <em>mutatis mutandis</em> sense: mediators are modified only as needed to align an individual with the distribution under the alternative treatment, while respecting causal dependencies among mediators. Sequential transport (ST) builds these counterfactuals by applying univariate or conditional OT maps in a topological order of the mediator DAG, and extends naturally to categorical mediators through simplex representation, and adapted transport techniques. We establish consistency of the estimated transport maps and of the induced individual-level decompositions of treatment effects. Gaussian examples show that ST recovers classical mediation formulas, while simulations confirm good performance in nonlinear and mixed-type settings. An application to the COMPAS dataset illustrates how ST yields deterministic, DAG-consistent counterfactual mediators and provides a fine-grained attribution of group disparities across mediators. The framework offers a flexible and interpretable alternative to structural causal models, and suggests extensions to longitudinal mediators, dynamic interventions, and stochastic transport flows.</p>
 </blockquote>
 <section id="replication-package" class="level2" data-number="1.1">
 <h2 data-number="1.1" class="anchored" data-anchor-id="replication-package"><span class="header-section-number">1.1</span> Replication Package</h2>
 <p>To replicate the empirical results of the paper (using R and pyton):</p>
 <p><a href="./replication.zip" class="btn btn-primary btn-sm" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">Download the Replication Codes (Zip archive)</a></p>
 <p>(See the readme file in the archive for more details.)</p>
+<p>The results presented in the paper focus on the following chapters of this ebook:</p>
+<ul>
+<li><a href="gaussian-example.html" class="quarto-xref"><span>Chapter 5</span></a></li>
+<li><a href="gaussian-example-mc.html" class="quarto-xref"><span>Chapter 6</span></a></li>
+<li><a href="xp-simulated.html" class="quarto-xref"><span>Chapter 13</span></a></li>
+<li><a href="xp-compas.html" class="quarto-xref"><span>Chapter 14</span></a></li>
+</ul>
+<p>The other chapters provide additional context and details.</p>
 </section>
 <section id="outline-of-this-ebook" class="level2" data-number="1.2">
 <h2 data-number="1.2" class="anchored" data-anchor-id="outline-of-this-ebook"><span class="header-section-number">1.2</span> Outline of this Ebook</h2>

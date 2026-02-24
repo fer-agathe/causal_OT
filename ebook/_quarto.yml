@@ -5,7 +5,7 @@ project:
 
 book:
   title: "Sequential Transport for Causal Mediation Analysis"
-  date: "02/09/2026"
+  date: "02/24/2026"
   chapters:
     - index.qmd
     - part: I. Introduction
